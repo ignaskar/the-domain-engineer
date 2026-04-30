@@ -15,14 +15,6 @@ type Address struct {
 	countryCode CountryCode
 }
 
-type addressDbDTO struct {
-	Line1       string      `json:"line_1"`
-	Line2       string      `json:"line_2"`
-	PostalCode  string      `json:"postal_code"`
-	City        string      `json:"city"`
-	CountryCode CountryCode `json:"country_code"`
-}
-
 func NewAddress(line1, line2, postalCode, city string, countryCode CountryCode) (Address, error) {
 	if line1 == "" {
 		return Address{}, errors.New("address line 1 is required")
@@ -49,6 +41,10 @@ func NewAddress(line1, line2, postalCode, city string, countryCode CountryCode) 
 	}, nil
 }
 
+func (a Address) IsZero() bool {
+	return a == Address{}
+}
+
 func (a Address) Line1() string {
 	return a.line1
 }
@@ -69,8 +65,12 @@ func (a Address) CountryCode() CountryCode {
 	return a.countryCode
 }
 
-func (a Address) IsZero() bool {
-	return a == Address{}
+type addressDbDTO struct {
+	Line1       string      `json:"line_1"`
+	Line2       string      `json:"line_2"`
+	PostalCode  string      `json:"postal_code"`
+	City        string      `json:"city"`
+	CountryCode CountryCode `json:"country_code"`
 }
 
 func (a *Address) Scan(src any) error {
@@ -79,7 +79,7 @@ func (a *Address) Scan(src any) error {
 		return fmt.Errorf("invalid type for %T, expected string", src)
 	}
 
-	err := json.Unmarshal([]byte(text), a)
+	err := a.UnmarshalJSON([]byte(text))
 	if err != nil {
 		return fmt.Errorf("error unmarshalling %T from json: %w", a, err)
 	}
@@ -88,7 +88,7 @@ func (a *Address) Scan(src any) error {
 }
 
 func (a Address) Value() (driver.Value, error) {
-	data, err := json.Marshal(a)
+	data, err := a.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling %T to json: %w", a, err)
 	}
@@ -108,9 +108,9 @@ func (a Address) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-func (a *Address) UnmarshalJSON(bytes []byte) error {
+func (a *Address) UnmarshalJSON(data []byte) error {
 	m := addressDbDTO{}
-	err := json.Unmarshal(bytes, &m)
+	err := json.Unmarshal(data, &m)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling %T from json: %w", a, err)
 	}
