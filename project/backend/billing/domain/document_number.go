@@ -1,14 +1,6 @@
 package domain
 
-import (
-	"errors"
-	"fmt"
-)
-
-// TODO: define DocumentSeries and DocumentNumber
-// types used by the billing domain.
-
-var DocumentSeriesReceipt = DocumentSeries{"R"}
+import "fmt"
 
 type DocumentSeries struct {
 	series string
@@ -16,19 +8,23 @@ type DocumentSeries struct {
 
 func NewDocumentSeries(series string) (DocumentSeries, error) {
 	if series == "" {
-		return DocumentSeries{}, errors.New("document series must not be empty")
+		return DocumentSeries{}, fmt.Errorf("document series must not be empty")
 	}
 
-	return DocumentSeries{series: series}, nil
+	return DocumentSeries{
+		series: series,
+	}, nil
 }
 
-func (d DocumentSeries) IsZero() bool {
-	return d.series == ""
+func (s DocumentSeries) IsZero() bool {
+	return s.series == ""
 }
 
-func (d DocumentSeries) String() string {
-	return d.series
+func (s DocumentSeries) String() string {
+	return s.series
 }
+
+var DocumentSeriesReceipt = DocumentSeries{"R"}
 
 type DocumentNumber struct {
 	series DocumentSeries
@@ -37,14 +33,17 @@ type DocumentNumber struct {
 
 func NewDocumentNumber(series DocumentSeries, number int) (DocumentNumber, error) {
 	if series.IsZero() {
-		return DocumentNumber{}, errors.New("document series must not be empty")
+		return DocumentNumber{}, fmt.Errorf("document series must not be empty")
 	}
 
 	if number <= 0 {
-		return DocumentNumber{}, errors.New("document number must be greater than zero")
+		return DocumentNumber{}, fmt.Errorf("document number must be greater than zero")
 	}
 
-	return DocumentNumber{series: series, number: number}, nil
+	return DocumentNumber{
+		series: series,
+		number: number,
+	}, nil
 }
 
 func (d DocumentNumber) IsZero() bool {
