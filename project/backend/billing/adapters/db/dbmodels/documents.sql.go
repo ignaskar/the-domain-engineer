@@ -11,6 +11,24 @@ import (
 	"eats/backend/billing/domain"
 )
 
+const getDocumentByExternalReference = `-- name: GetDocumentByExternalReference :one
+SELECT document_uuid, document_number, series_prefix, external_reference
+FROM billing.documents
+WHERE external_reference = $1
+`
+
+func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalReference *string) (BillingDocument, error) {
+	row := q.db.QueryRow(ctx, getDocumentByExternalReference, externalReference)
+	var i BillingDocument
+	err := row.Scan(
+		&i.DocumentUuid,
+		&i.DocumentNumber,
+		&i.SeriesPrefix,
+		&i.ExternalReference,
+	)
+	return i, err
+}
+
 const nextDocumentNumber = `-- name: NextDocumentNumber :one
 UPDATE billing.document_series
 SET last_number = last_number + 1,
@@ -28,17 +46,18 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 
 const saveDocument = `-- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid, document_number, series_prefix
+    document_uuid, document_number, series_prefix, external_reference
 )
 VALUES (
-    $1, $2, $3
+    $1, $2, $3, $4
 )
 `
 
 type SaveDocumentParams struct {
-	DocumentUuid   domain.DocumentUUID
-	DocumentNumber string
-	SeriesPrefix   string
+	DocumentUuid      domain.DocumentUUID
+	DocumentNumber    string
+	SeriesPrefix      string
+	ExternalReference *string
 }
 
 func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) error {
@@ -46,6 +65,7 @@ func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) erro
 		arg.DocumentUuid,
 		arg.DocumentNumber,
 		arg.SeriesPrefix,
+		arg.ExternalReference,
 	)
 	return err
 }

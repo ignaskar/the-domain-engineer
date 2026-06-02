@@ -7,8 +7,13 @@ RETURNING last_number;
 
 -- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid, document_number, series_prefix
+    document_uuid, document_number, series_prefix, external_reference
 )
 VALUES (
-    sqlc.arg(document_uuid), sqlc.arg(document_number), sqlc.arg(series_prefix)
+    sqlc.arg(document_uuid), sqlc.arg(document_number), sqlc.arg(series_prefix), sqlc.arg(external_reference)
 );
+
+-- name: GetDocumentByExternalReference :one
+SELECT *
+FROM billing.documents
+WHERE external_reference = $1;

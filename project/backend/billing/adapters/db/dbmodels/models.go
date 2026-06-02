@@ -10,9 +10,10 @@ import (
 )
 
 type BillingDocument struct {
-	DocumentUuid   domain.DocumentUUID
-	DocumentNumber string
-	SeriesPrefix   string
+	DocumentUuid      domain.DocumentUUID
+	DocumentNumber    string
+	SeriesPrefix      string
+	ExternalReference *string
 }
 
 type BillingDocumentSeries struct {
