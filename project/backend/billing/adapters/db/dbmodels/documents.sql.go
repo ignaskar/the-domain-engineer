@@ -28,13 +28,10 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 
 const saveDocument = `-- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid,
-    document_number,
-    series_prefix
-) VALUES (
-    $1,
-    $2,
-    $3
+    document_uuid, document_number, series_prefix
+)
+VALUES (
+    $1, $2, $3
 )
 `
 
@@ -45,6 +42,10 @@ type SaveDocumentParams struct {
 }
 
 func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) error {
-	_, err := q.db.Exec(ctx, saveDocument, arg.DocumentUuid, arg.DocumentNumber, arg.SeriesPrefix)
+	_, err := q.db.Exec(ctx, saveDocument,
+		arg.DocumentUuid,
+		arg.DocumentNumber,
+		arg.SeriesPrefix,
+	)
 	return err
 }
