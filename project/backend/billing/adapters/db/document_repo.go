@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"eats/backend/common/log"
 	"fmt"
 
 	pgx "github.com/jackc/pgx/v5"
@@ -11,6 +10,7 @@ import (
 	"eats/backend/billing/adapters/db/dbmodels"
 	"eats/backend/billing/domain"
 	"eats/backend/common"
+	"eats/backend/common/log"
 )
 
 type DocumentRecord struct {
@@ -65,9 +65,9 @@ func (r *PostgresRepository) CreateDocument(
 
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
 			DocumentUuid:      record.UUID,
+			ExternalReference: record.ExternalReference,
 			DocumentNumber:    docNumber.String(),
 			SeriesPrefix:      series.String(),
-			ExternalReference: record.ExternalReference,
 		})
 		if err != nil {
 			return fmt.Errorf("error saving document: %w", err)
@@ -75,13 +75,16 @@ func (r *PostgresRepository) CreateDocument(
 
 		return nil
 	})
+
+	// We can't handle this with ON CONFLICT - we have to cancel the transaction not to generate a new document number
 	if common.IsUniqueViolationError(err, "documents_external_reference_key") {
 		logger := log.FromContext(ctx)
 		logger.With("external_reference", externalReference).Info("Skipping document creation due to existing external reference")
 
+		// This is outside of transaction, but it's okay - this is a read operation
 		dbDoc, err := r.getDocumentByExternalReference(ctx, externalReference)
 		if err != nil {
-			return domain.DocumentUUID{}, fmt.Errorf("error getting document by external reference: %w", err)
+			return domain.DocumentUUID{}, fmt.Errorf("error retrieving existing document by external reference: %w", err)
 		}
 
 		return dbDoc.DocumentUuid, nil
@@ -98,7 +101,7 @@ func (r *PostgresRepository) getDocumentByExternalReference(ctx context.Context,
 
 	dbDoc, err := queries.GetDocumentByExternalReference(ctx, &externalRef)
 	if err != nil {
-		return dbmodels.BillingDocument{}, fmt.Errorf("get existing document by external reference: %w", err)
+		return dbmodels.BillingDocument{}, fmt.Errorf("error getting document by external reference: %w", err)
 	}
 
 	return dbDoc, nil

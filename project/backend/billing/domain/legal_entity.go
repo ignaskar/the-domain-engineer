@@ -1,8 +1,9 @@
 package domain
 
 import (
-	"eats/backend/common/shared"
 	"errors"
+
+	"eats/backend/common/shared"
 )
 
 type LegalEntity struct {
@@ -27,18 +28,18 @@ func NewLegalEntity(name string, address shared.Address, taxID *shared.TaxID) (L
 	}, nil
 }
 
-func (e LegalEntity) IsZero() bool {
-	return e.name == "" && e.address.IsZero()
+func (l LegalEntity) Name() string {
+	return l.name
 }
 
-func (e LegalEntity) Name() string {
-	return e.name
+func (l LegalEntity) Address() shared.Address {
+	return l.address
 }
 
-func (e LegalEntity) Address() shared.Address {
-	return e.address
+func (l LegalEntity) TaxID() *shared.TaxID {
+	return l.taxID
 }
 
-func (e LegalEntity) TaxID() *shared.TaxID {
-	return e.taxID
+func (l LegalEntity) IsZero() bool {
+	return l == LegalEntity{}
 }

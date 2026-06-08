@@ -11,9 +11,9 @@ import (
 
 type BillingDocument struct {
 	DocumentUuid      domain.DocumentUUID
+	ExternalReference *string
 	DocumentNumber    string
 	SeriesPrefix      string
-	ExternalReference *string
 }
 
 type BillingDocumentSeries struct {

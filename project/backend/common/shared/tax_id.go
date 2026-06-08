@@ -7,10 +7,30 @@ import (
 	"unicode"
 )
 
-const minTaxIDLength = 5
-
 type TaxID struct {
 	taxID string
+}
+
+const minTaxIDLength = 5
+
+func NewTaxID(taxID string) (TaxID, error) {
+	if taxID == "" {
+		return TaxID{}, errors.New("taxID is empty")
+	}
+
+	if len(taxID) < minTaxIDLength {
+		return TaxID{}, errors.New("taxID is too short")
+	}
+
+	for _, r := range taxID {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != ' ' {
+			return TaxID{}, errors.New("taxID contains invalid characters")
+		}
+	}
+
+	return TaxID{
+		taxID: taxID,
+	}, nil
 }
 
 func (t TaxID) IsZero() bool {
@@ -19,24 +39,6 @@ func (t TaxID) IsZero() bool {
 
 func (t TaxID) String() string {
 	return t.taxID
-}
-
-func NewTaxID(taxID string) (TaxID, error) {
-	if taxID == "" {
-		return TaxID{}, errors.New("taxID cannot be empty")
-	}
-
-	if len(taxID) < minTaxIDLength {
-		return TaxID{}, errors.New("taxID must be at least 5 characters")
-	}
-
-	for _, ch := range taxID {
-		if !unicode.IsLetter(ch) && !unicode.IsNumber(ch) && ch != '-' && ch != ' ' {
-			return TaxID{}, errors.New("taxID contains invalid characters")
-		}
-	}
-
-	return TaxID{taxID: taxID}, nil
 }
 
 // Scan accepts any value from the database without validation.

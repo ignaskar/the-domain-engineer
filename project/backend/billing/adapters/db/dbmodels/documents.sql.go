@@ -12,9 +12,7 @@ import (
 )
 
 const getDocumentByExternalReference = `-- name: GetDocumentByExternalReference :one
-SELECT document_uuid, document_number, series_prefix, external_reference
-FROM billing.documents
-WHERE external_reference = $1
+SELECT document_uuid, external_reference, document_number, series_prefix FROM billing.documents WHERE external_reference = $1
 `
 
 func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalReference *string) (BillingDocument, error) {
@@ -22,9 +20,9 @@ func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalRe
 	var i BillingDocument
 	err := row.Scan(
 		&i.DocumentUuid,
+		&i.ExternalReference,
 		&i.DocumentNumber,
 		&i.SeriesPrefix,
-		&i.ExternalReference,
 	)
 	return i, err
 }
@@ -46,7 +44,7 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 
 const saveDocument = `-- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid, document_number, series_prefix, external_reference
+    document_uuid, external_reference, document_number, series_prefix
 )
 VALUES (
     $1, $2, $3, $4
@@ -55,17 +53,17 @@ VALUES (
 
 type SaveDocumentParams struct {
 	DocumentUuid      domain.DocumentUUID
+	ExternalReference *string
 	DocumentNumber    string
 	SeriesPrefix      string
-	ExternalReference *string
 }
 
 func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) error {
 	_, err := q.db.Exec(ctx, saveDocument,
 		arg.DocumentUuid,
+		arg.ExternalReference,
 		arg.DocumentNumber,
 		arg.SeriesPrefix,
-		arg.ExternalReference,
 	)
 	return err
 }
