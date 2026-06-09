@@ -21,6 +21,10 @@ func (l LineAmount) IsGross() bool {
 	return l.isGross
 }
 
+func (l LineAmount) IsNegative() bool {
+	return l.amount.LessThan(decimal.Zero)
+}
+
 func NewNetAmount(amount decimal.Decimal) LineAmount {
 	return LineAmount{
 		amount:  amount,

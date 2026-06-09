@@ -7,7 +7,14 @@ import (
 
 	"eats/backend/common"
 	"eats/backend/common/shared"
+
+	"github.com/shopspring/decimal"
 )
+
+var defaultTaxRate = TaxRate{
+	rate:    decimal.NewFromFloat(0.10),
+	taxType: TaxTypeSalesTax,
+}
 
 type DocumentType struct {
 	common.Enum[DocumentTypeValues]
@@ -50,7 +57,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 
 	lineItems := make([]LineItem, 0, len(data.LineItems))
 	for _, lid := range data.LineItems {
-		lineItem, err := newLineItem(lid)
+		lineItem, err := newLineItem(lid, data.Currency, defaultTaxRate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create line item for document: %w", err)
 		}
@@ -80,8 +87,9 @@ type NewDocumentData struct {
 }
 
 type NewLineItemData struct {
-	Name     string
-	Quantity int
+	Name       string
+	Quantity   int
+	UnitAmount shared.LineAmount
 }
 
 type DocumentUUID struct {
@@ -141,12 +149,13 @@ type LineItemUUID struct {
 }
 
 type LineItem struct {
-	uuid     LineItemUUID
-	name     string
-	quantity int
+	uuid      LineItemUUID
+	name      string
+	quantity  int
+	breakdown PriceBreakdown
 }
 
-func newLineItem(data NewLineItemData) (LineItem, error) {
+func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate) (LineItem, error) {
 	if data.Name == "" {
 		return LineItem{}, errors.New("name can't be empty")
 	}
@@ -155,10 +164,26 @@ func newLineItem(data NewLineItemData) (LineItem, error) {
 		return LineItem{}, errors.New("quantity must be positive")
 	}
 
+	if data.UnitAmount.IsNegative() {
+		return LineItem{}, errors.New("unit amount can't be negative")
+	}
+
+	var priceBreakdown PriceBreakdown
+	var err error
+	if data.UnitAmount.IsGross() {
+		priceBreakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	} else {
+		priceBreakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	}
+	if err != nil {
+		return LineItem{}, fmt.Errorf("failed to create price breakdown: %w", err)
+	}
+
 	return LineItem{
-		uuid:     LineItemUUID{common.NewUUIDv7()},
-		name:     data.Name,
-		quantity: data.Quantity,
+		uuid:      LineItemUUID{common.NewUUIDv7()},
+		name:      data.Name,
+		quantity:  data.Quantity,
+		breakdown: priceBreakdown,
 	}, nil
 }
 
@@ -172,4 +197,8 @@ func (l LineItem) Name() string {
 
 func (l LineItem) Quantity() int {
 	return l.quantity
+}
+
+func (l LineItem) PriceBreakdown() PriceBreakdown {
+	return l.breakdown
 }
