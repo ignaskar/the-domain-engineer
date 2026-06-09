@@ -57,34 +57,36 @@ func NewPriceBreakdownFromNetAmount(
 	if rate.IsZero() {
 		return PriceBreakdown{}, common.NewInvalidInputError("tax-rate-zero", "tax rate cannot be empty")
 	}
-
-	if unitNetAmount.LessThan(decimal.Zero) {
-		return PriceBreakdown{}, common.NewInvalidInputError("unit-net-amount-negative", "unit net amount cannot be empty")
+	if unitNetAmount.IsNegative() {
+		return PriceBreakdown{}, common.NewInvalidInputError("unit-net-amount-negative", "unit net amount cannot be negative")
 	}
-
-	if quantity < 1 {
+	if quantity <= 0 {
 		return PriceBreakdown{}, common.NewInvalidInputError("quantity-not-positive", "quantity should be positive")
 	}
 
+	// Round just in case to avoid issues with repeating decimals
 	unitNetAmount = roundInCurrency(unitNetAmount, currency)
-	unitTaxAmount := roundInCurrency(unitNetAmount.Mul(rate.rate), currency)
+
+	// Critical part: this is the only place where the rounding happens
+	unitTaxAmount := roundInCurrency(unitNetAmount.Mul(rate.Rate()), currency)
+	// No need to round again as we already work with rounded numbers
 	unitGrossAmount := unitNetAmount.Add(unitTaxAmount)
 
-	q := decimal.NewFromInt(int64(quantity))
-	netAmount := unitNetAmount.Mul(q)
-	taxAmount := unitTaxAmount.Mul(q)
-	grossAmount := unitGrossAmount.Mul(q)
+	quantityDecimal := decimal.NewFromInt(int64(quantity))
+
+	// We already work with rounded numbers at this point
+	netAmount := unitNetAmount.Mul(quantityDecimal)
+	taxAmount := unitTaxAmount.Mul(quantityDecimal)
+	grossAmount := unitGrossAmount.Mul(quantityDecimal)
 
 	return PriceBreakdown{
-		rate: rate,
-
+		rate:            rate,
 		unitNetAmount:   unitNetAmount,
 		unitTaxAmount:   unitTaxAmount,
 		unitGrossAmount: unitGrossAmount,
-
-		netAmount:   netAmount,
-		taxAmount:   taxAmount,
-		grossAmount: grossAmount,
+		netAmount:       netAmount,
+		taxAmount:       taxAmount,
+		grossAmount:     grossAmount,
 	}, nil
 }
 
@@ -97,37 +99,39 @@ func NewPriceBreakdownFromGrossAmount(
 	if rate.IsZero() {
 		return PriceBreakdown{}, common.NewInvalidInputError("tax-rate-zero", "tax rate cannot be empty")
 	}
-
-	if unitGrossAmount.LessThan(decimal.Zero) {
-		return PriceBreakdown{}, common.NewInvalidInputError("unit-gross-amount-negative", "unit gross amount cannot be empty")
+	if unitGrossAmount.IsNegative() {
+		return PriceBreakdown{}, common.NewInvalidInputError("unit-gross-amount-negative", "unit gross amount cannot be negative")
 	}
-
-	if quantity < 1 {
+	if quantity <= 0 {
 		return PriceBreakdown{}, common.NewInvalidInputError("quantity-not-positive", "quantity should be positive")
 	}
 
+	// Round just in case to avoid issues with repeating decimals
 	unitGrossAmount = roundInCurrency(unitGrossAmount, currency)
-	unitNetAmount := roundInCurrency(unitGrossAmount.Div(
-		decimal.NewFromInt(1).Add(rate.rate)),
-		currency,
-	)
-	unitTaxAmount := unitGrossAmount.Sub(unitNetAmount)
 
-	q := decimal.NewFromInt(int64(quantity))
-	netAmount := unitNetAmount.Mul(q)
-	taxAmount := unitTaxAmount.Mul(q)
-	grossAmount := unitGrossAmount.Mul(q)
+	// Critical part: this is the only place where the rounding happens
+	// From now on, we operate on rounded numbers to avoid rounding issues later
+	unitNetAmount := roundInCurrency(unitGrossAmount.Div(decimal.NewFromInt(1).Add(rate.Rate())), currency)
+
+	// Gross price is the source of truth and we want line items gross price to add up to the correct total
+	// so we calculate tax as the difference between gross and net
+	unitTaxAmount := roundInCurrency(unitGrossAmount.Sub(unitNetAmount), currency)
+
+	quantityDecimal := decimal.NewFromInt(int64(quantity))
+
+	// We already work with rounded numbers at this point
+	grossAmount := unitGrossAmount.Mul(quantityDecimal)
+	netAmount := unitNetAmount.Mul(quantityDecimal)
+	taxAmount := unitTaxAmount.Mul(quantityDecimal)
 
 	return PriceBreakdown{
-		rate: rate,
-
+		rate:            rate,
 		unitNetAmount:   unitNetAmount,
 		unitTaxAmount:   unitTaxAmount,
 		unitGrossAmount: unitGrossAmount,
-
-		netAmount:   netAmount,
-		taxAmount:   taxAmount,
-		grossAmount: grossAmount,
+		netAmount:       netAmount,
+		taxAmount:       taxAmount,
+		grossAmount:     grossAmount,
 	}, nil
 }
 

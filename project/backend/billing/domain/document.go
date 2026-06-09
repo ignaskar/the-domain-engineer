@@ -5,16 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"eats/backend/common"
 	"eats/backend/common/shared"
-
-	"github.com/shopspring/decimal"
 )
-
-var defaultTaxRate = TaxRate{
-	rate:    decimal.NewFromFloat(0.10),
-	taxType: TaxTypeSalesTax,
-}
 
 type DocumentType struct {
 	common.Enum[DocumentTypeValues]
@@ -27,6 +22,12 @@ func (DocumentTypeValues) Values() []string {
 }
 
 var DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
+
+// defaultTaxRate is the hardcoded 10% sales tax for our single-country MVP.
+var defaultTaxRate = TaxRate{
+	rate:    decimal.NewFromFloat(0.10),
+	taxType: TaxTypeSalesTax,
+}
 
 func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, error) {
 	if data.Buyer.TaxID() != nil {
@@ -151,8 +152,8 @@ type LineItemUUID struct {
 type LineItem struct {
 	uuid      LineItemUUID
 	name      string
-	quantity  int
 	breakdown PriceBreakdown
+	quantity  int
 }
 
 func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate) (LineItem, error) {
@@ -164,17 +165,19 @@ func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate
 		return LineItem{}, errors.New("quantity must be positive")
 	}
 
-	if data.UnitAmount.IsNegative() {
+	if data.UnitAmount.Amount().IsNegative() {
 		return LineItem{}, errors.New("unit amount can't be negative")
 	}
 
 	var priceBreakdown PriceBreakdown
 	var err error
+
 	if data.UnitAmount.IsGross() {
 		priceBreakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
 	} else {
 		priceBreakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
 	}
+
 	if err != nil {
 		return LineItem{}, fmt.Errorf("failed to create price breakdown: %w", err)
 	}
@@ -182,8 +185,8 @@ func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate
 	return LineItem{
 		uuid:      LineItemUUID{common.NewUUIDv7()},
 		name:      data.Name,
-		quantity:  data.Quantity,
 		breakdown: priceBreakdown,
+		quantity:  data.Quantity,
 	}, nil
 }
 
