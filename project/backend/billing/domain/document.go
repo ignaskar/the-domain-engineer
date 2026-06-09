@@ -65,6 +65,8 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 		lineItems = append(lineItems, lineItem)
 	}
 
+	summary := summarizeLineItems(lineItems)
+
 	return &Document{
 		uuid:              DocumentUUID{common.NewUUIDv7()},
 		externalReference: data.ExternalReference,
@@ -75,6 +77,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 		seller:            data.Seller,
 		buyer:             data.Buyer,
 		lineItems:         lineItems,
+		summary:           summary,
 	}, nil
 }
 
@@ -107,6 +110,7 @@ type Document struct {
 	seller            LegalEntity
 	buyer             LegalEntity
 	lineItems         []LineItem
+	summary           PriceBreakdownSummary
 }
 
 func (d *Document) UUID() DocumentUUID {
@@ -143,6 +147,10 @@ func (d *Document) Buyer() LegalEntity {
 
 func (d *Document) LineItems() []LineItem {
 	return d.lineItems
+}
+
+func (d *Document) Summary() PriceBreakdownSummary {
+	return d.summary
 }
 
 type LineItemUUID struct {
