@@ -44,6 +44,19 @@ func (h Handler) GetDocument(ctx context.Context, request GetDocumentRequestObje
 	return GetDocument200JSONResponse(documentToResponse(doc)), nil
 }
 
+func (h Handler) PrintDocument(ctx context.Context, request PrintDocumentRequestObject) (PrintDocumentResponseObject, error) {
+	cmd := command.PrintDocument{
+		DocumentUUID: request.DocumentUuid,
+	}
+
+	err := h.commands.PrintDocument(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return PrintDocument204Response{}, nil
+}
+
 func documentToResponse(doc *domain.Document) DocumentResponse {
 	lineItems := make([]ResponseLineItem, 0, len(doc.LineItems()))
 	for _, li := range doc.LineItems() {
@@ -61,17 +74,6 @@ func documentToResponse(doc *domain.Document) DocumentResponse {
 		LineItems:      lineItems,
 		Summary:        summaryToResponse(doc.Summary()),
 	}
-}
-
-func (h Handler) PrintDocument(ctx context.Context, request PrintDocumentRequestObject) (PrintDocumentResponseObject, error) {
-	cmd := command.PrintDocument{DocumentUUID: request.DocumentUuid}
-
-	err := h.commands.PrintDocument(ctx, cmd)
-	if err != nil {
-		return nil, err
-	}
-
-	return PrintDocument204Response{}, nil
 }
 
 func legalEntityToResponse(le domain.LegalEntity) LegalEntity {

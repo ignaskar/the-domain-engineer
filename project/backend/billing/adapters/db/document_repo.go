@@ -264,12 +264,12 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 	return doc, nil
 }
 
-func (r *PostgresRepository) UpdateFileUrl(ctx context.Context, docUUID domain.DocumentUUID, fileURL string) error {
+func (r *PostgresRepository) UpdateFileUrl(ctx context.Context, docUUID domain.DocumentUUID, fileUrl string) error {
 	queries := dbmodels.New(r.db)
 
 	err := queries.UpdateDocumentFileUrl(ctx, dbmodels.UpdateDocumentFileUrlParams{
 		DocumentUuid: docUUID,
-		FileUrl:      &fileURL,
+		FileUrl:      &fileUrl,
 	})
 	if err != nil {
 		return fmt.Errorf("error updating document file url: %w", err)

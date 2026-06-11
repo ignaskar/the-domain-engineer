@@ -47,6 +47,11 @@ INSERT INTO billing.document_taxes (document_uuid, tax_type, tax_rate, net_amoun
     sqlc.arg(tax_amount)
  );
 
+-- name: UpdateDocumentFileUrl :exec
+UPDATE billing.documents
+SET file_url = sqlc.arg(file_url)
+WHERE document_uuid = sqlc.arg(document_uuid);
+
 -- name: GetDocument :one
 SELECT sqlc.embed(documents), sqlc.embed(seller), sqlc.embed(buyer)
 FROM billing.documents AS documents
@@ -64,6 +69,3 @@ WHERE document_uuid = $1;
 -- name: GetDocumentTaxes :many
 SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount from billing.document_taxes
 WHERE document_uuid = $1;
-
--- name: UpdateDocumentFileUrl :exec
-UPDATE billing.documents SET file_url = $2 WHERE document_uuid = $1;

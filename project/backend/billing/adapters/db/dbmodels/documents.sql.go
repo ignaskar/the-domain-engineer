@@ -298,15 +298,17 @@ func (q *Queries) SaveDocumentTax(ctx context.Context, arg SaveDocumentTaxParams
 }
 
 const updateDocumentFileUrl = `-- name: UpdateDocumentFileUrl :exec
-UPDATE billing.documents SET file_url = $2 WHERE document_uuid = $1
+UPDATE billing.documents
+SET file_url = $1
+WHERE document_uuid = $2
 `
 
 type UpdateDocumentFileUrlParams struct {
-	DocumentUuid domain.DocumentUUID
 	FileUrl      *string
+	DocumentUuid domain.DocumentUUID
 }
 
 func (q *Queries) UpdateDocumentFileUrl(ctx context.Context, arg UpdateDocumentFileUrlParams) error {
-	_, err := q.db.Exec(ctx, updateDocumentFileUrl, arg.DocumentUuid, arg.FileUrl)
+	_, err := q.db.Exec(ctx, updateDocumentFileUrl, arg.FileUrl, arg.DocumentUuid)
 	return err
 }

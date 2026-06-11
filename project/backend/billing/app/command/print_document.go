@@ -21,34 +21,36 @@ type PrintDocument struct {
 }
 
 func (h *Handlers) PrintDocument(ctx context.Context, cmd PrintDocument) error {
-	document, err := h.documentRepository.DocumentByUUID(ctx, cmd.DocumentUUID)
+	doc, err := h.documentRepository.DocumentByUUID(ctx, cmd.DocumentUUID)
 	if err != nil {
-		return fmt.Errorf("failed to get document by uuid: %w", err)
+		return fmt.Errorf("could not get document by uuid: %w", err)
 	}
 
-	bytes, err := h.documentPrinter.PrintDocument(ctx, document)
+	rendered, err := h.documentPrinter.PrintDocument(ctx, doc)
 	if err != nil {
-		return fmt.Errorf("failed to print document: %w", err)
+		return fmt.Errorf("could not print document: %w", err)
 	}
 
 	var subdir string
-	switch document.DocumentType() {
+	switch doc.DocumentType() {
 	case domain.DocumentTypeReceipt:
 		subdir = "receipts"
 	default:
-		return fmt.Errorf("document type %s not recognized", document.DocumentType())
+		return fmt.Errorf("unknown document type: %s", doc.DocumentType())
 	}
 
-	p := path.Join("documents", subdir, document.DocumentNumber().String()+".html")
+	fileName := doc.DocumentNumber().String() + ".html"
+	filePath := path.Join("documents", subdir, fileName)
 
-	url, err := h.fileStorage.StoreFile(ctx, p, bytes)
+	storagePath, err := h.fileStorage.StoreFile(ctx, filePath, rendered)
 	if err != nil {
-		return fmt.Errorf("failed to store file: %w", err)
+		return fmt.Errorf("could not store document: %w", err)
 	}
 
-	err = h.documentRepository.UpdateFileUrl(ctx, cmd.DocumentUUID, url)
+	// Should be idempotent
+	err = h.documentRepository.UpdateFileUrl(ctx, cmd.DocumentUUID, storagePath)
 	if err != nil {
-		return fmt.Errorf("failed to update document url: %w", err)
+		return fmt.Errorf("could not update document file url: %w", err)
 	}
 
 	return nil
