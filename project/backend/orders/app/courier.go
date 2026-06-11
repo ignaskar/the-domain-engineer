@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	billingClient "eats/backend/billing/api/module/client"
+	"eats/backend/common/shared"
 	"fmt"
 	"strings"
 	"time"
@@ -131,6 +133,60 @@ func (s *Service) CourierReportDeliveryPickup(ctx context.Context, courierUUID C
 }
 
 func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID CourierUUID, orderUUID OrderUUID) error {
+	order, err := s.orderRepository.OrderByID(ctx, orderUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get order: %w", err)
+	}
+
+	customer, err := s.customerRepository.CustomerByUUID(ctx, order.CustomerUUID)
+	if err != nil {
+		return fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	var lineItems []billingClient.LineItem
+	lineItems = append(lineItems, billingClient.LineItem{
+		Name:       "Order Items",
+		UnitAmount: shared.NewGrossAmount(order.ItemsSubtotal),
+		Quantity:   1,
+	})
+
+	lineItems = append(lineItems, billingClient.LineItem{
+		Name:       "Delivery",
+		UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
+		Quantity:   1,
+	})
+
+	lineItems = append(lineItems, billingClient.LineItem{
+		Name:       "Service Fee",
+		UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
+		Quantity:   1,
+	})
+
+	seller, err := newPlatformLegalEntity()
+	if err != nil {
+		return fmt.Errorf("failed to create seller legal entity: %w", err)
+	}
+
+	buyer := billingClient.LegalEntity{
+		Name:    customer.Name,
+		Address: customer.Address,
+		TaxID:   nil,
+	}
+
+	orderUUIDStr := order.OrderUUID.String()
+	req := billingClient.IssueReceiptRequest{
+		ExternalReference: &orderUUIDStr,
+		IssueDate:         time.Now(),
+		Currency:          order.Currency,
+		Seller:            seller,
+		Buyer:             buyer,
+		LineItems:         lineItems,
+	}
+	err = s.modules.IssueReceipt(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to issue receipt: %w", err)
+	}
+
 	return s.orderRepository.UpdateOrder(
 		ctx,
 		orderUUID,
@@ -186,4 +242,24 @@ func checkCustomerMatch(orderCustomer CustomerUUID, customerUUID CustomerUUID) e
 		orderCustomer,
 		customerUUID,
 	))
+}
+
+func newPlatformLegalEntity() (billingClient.LegalEntity, error) {
+	addr, err := shared.NewAddress("1 Platform Way", "", "10001", "New York", shared.MustNewCountryCode("US"))
+	if err != nil {
+		return billingClient.LegalEntity{}, err
+	}
+
+	taxID, err := shared.NewTaxID("123456789")
+	if err != nil {
+		return billingClient.LegalEntity{}, err
+	}
+
+	var platformSeller = billingClient.LegalEntity{
+		Name:    "Eats Platform",
+		Address: addr,
+		TaxID:   &taxID,
+	}
+
+	return platformSeller, nil
 }
