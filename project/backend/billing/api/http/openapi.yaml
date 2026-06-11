@@ -67,6 +67,29 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /billing/documents/{document_uuid}/print:
+    post:
+      summary: Print a document as HTML
+      operationId: printDocument
+      tags:
+        - documents
+      parameters:
+        - in: path
+          name: document_uuid
+          required: true
+          schema:
+            $ref: '#/components/schemas/DocumentUUID'
+          description: UUID of the document to print
+      responses:
+        '204':
+          description: Document printed successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
   schemas:
     CreateDocument:

@@ -205,6 +205,9 @@ type ServerInterface interface {
 	// Get a document by UUID
 	// (GET /billing/documents/{document_uuid})
 	GetDocument(ctx echo.Context, documentUuid DocumentUUID) error
+	// Print a document as HTML
+	// (POST /billing/documents/{document_uuid}/print)
+	PrintDocument(ctx echo.Context, documentUuid DocumentUUID) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -234,6 +237,22 @@ func (w *ServerInterfaceWrapper) GetDocument(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetDocument(ctx, documentUuid)
+	return err
+}
+
+// PrintDocument converts echo context to params.
+func (w *ServerInterfaceWrapper) PrintDocument(ctx echo.Context) error {
+	var err error
+	// ------------- Path parameter "document_uuid" -------------
+	var documentUuid DocumentUUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "document_uuid", ctx.Param("document_uuid"), &documentUuid, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter document_uuid: %s", err))
+	}
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.PrintDocument(ctx, documentUuid)
 	return err
 }
 
@@ -267,6 +286,7 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.POST(baseURL+"/billing/documents/receipt", wrapper.CreateReceipt)
 	router.GET(baseURL+"/billing/documents/:document_uuid", wrapper.GetDocument)
+	router.POST(baseURL+"/billing/documents/:document_uuid/print", wrapper.PrintDocument)
 
 }
 
@@ -358,6 +378,49 @@ func (response GetDocument404JSONResponse) VisitGetDocumentResponse(w http.Respo
 	return json.NewEncoder(w).Encode(response)
 }
 
+type PrintDocumentRequestObject struct {
+	DocumentUuid DocumentUUID `json:"document_uuid"`
+}
+
+type PrintDocumentResponseObject interface {
+	VisitPrintDocumentResponse(w http.ResponseWriter) error
+}
+
+type PrintDocument204Response struct {
+}
+
+func (response PrintDocument204Response) VisitPrintDocumentResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PrintDocument400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response PrintDocument400JSONResponse) VisitPrintDocumentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PrintDocument401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response PrintDocument401JSONResponse) VisitPrintDocumentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PrintDocument404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response PrintDocument404JSONResponse) VisitPrintDocumentResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// Create a new receipt
@@ -366,6 +429,9 @@ type StrictServerInterface interface {
 	// Get a document by UUID
 	// (GET /billing/documents/{document_uuid})
 	GetDocument(ctx context.Context, request GetDocumentRequestObject) (GetDocumentResponseObject, error)
+	// Print a document as HTML
+	// (POST /billing/documents/{document_uuid}/print)
+	PrintDocument(ctx context.Context, request PrintDocumentRequestObject) (PrintDocumentResponseObject, error)
 }
 
 type StrictHandlerFunc = strictecho.StrictEchoHandlerFunc
@@ -428,6 +494,31 @@ func (sh *strictHandler) GetDocument(ctx echo.Context, documentUuid DocumentUUID
 		return err
 	} else if validResponse, ok := response.(GetDocumentResponseObject); ok {
 		return validResponse.VisitGetDocumentResponse(ctx.Response())
+	} else if response != nil {
+		return fmt.Errorf("unexpected response type: %T", response)
+	}
+	return nil
+}
+
+// PrintDocument operation middleware
+func (sh *strictHandler) PrintDocument(ctx echo.Context, documentUuid DocumentUUID) error {
+	var request PrintDocumentRequestObject
+
+	request.DocumentUuid = documentUuid
+
+	handler := func(ctx echo.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PrintDocument(ctx.Request().Context(), request.(PrintDocumentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PrintDocument")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		return err
+	} else if validResponse, ok := response.(PrintDocumentResponseObject); ok {
+		return validResponse.VisitPrintDocumentResponse(ctx.Response())
 	} else if response != nil {
 		return fmt.Errorf("unexpected response type: %T", response)
 	}
