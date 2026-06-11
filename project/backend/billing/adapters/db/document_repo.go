@@ -263,3 +263,17 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 
 	return doc, nil
 }
+
+func (r *PostgresRepository) UpdateFileUrl(ctx context.Context, docUUID domain.DocumentUUID, fileURL string) error {
+	queries := dbmodels.New(r.db)
+
+	err := queries.UpdateDocumentFileUrl(ctx, dbmodels.UpdateDocumentFileUrlParams{
+		DocumentUuid: docUUID,
+		FileUrl:      &fileURL,
+	})
+	if err != nil {
+		return fmt.Errorf("error updating document file url: %w", err)
+	}
+
+	return nil
+}

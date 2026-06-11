@@ -31,6 +31,7 @@ type DocumentRepository interface {
 		series DocumentSeries,
 		createFunc func(documentNumber DocumentNumber) (*Document, error),
 	) (DocumentUUID, error)
+	UpdateFileUrl(ctx context.Context, docUUID DocumentUUID, fileURL string) error
 }
 
 // defaultTaxRate is the hardcoded 10% sales tax for our single-country MVP.

@@ -72,6 +72,7 @@ type BillingDocument struct {
 	TotalGrossAmount  decimal.Decimal
 	SellerUuid        common.UUID
 	BuyerUuid         common.UUID
+	FileUrl           *string
 }
 
 type BillingDocumentLineItem struct {

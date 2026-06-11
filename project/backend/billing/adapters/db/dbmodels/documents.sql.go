@@ -16,7 +16,7 @@ import (
 )
 
 const getDocument = `-- name: GetDocument :one
-SELECT documents.document_uuid, documents.document_number, documents.series_prefix, documents.external_reference, documents.document_type, documents.issue_date, documents.currency, documents.total_net_amount, documents.total_tax_amount, documents.total_gross_amount, documents.seller_uuid, documents.buyer_uuid, seller.snapshot_uuid, seller.name, seller.address, seller.tax_id, buyer.snapshot_uuid, buyer.name, buyer.address, buyer.tax_id
+SELECT documents.document_uuid, documents.document_number, documents.series_prefix, documents.external_reference, documents.document_type, documents.issue_date, documents.currency, documents.total_net_amount, documents.total_tax_amount, documents.total_gross_amount, documents.seller_uuid, documents.buyer_uuid, documents.file_url, seller.snapshot_uuid, seller.name, seller.address, seller.tax_id, buyer.snapshot_uuid, buyer.name, buyer.address, buyer.tax_id
 FROM billing.documents AS documents
 INNER JOIN billing.legal_entity_snapshots seller ON seller.snapshot_uuid = documents.seller_uuid
 INNER JOIN billing.legal_entity_snapshots buyer ON buyer.snapshot_uuid = documents.buyer_uuid
@@ -45,6 +45,7 @@ func (q *Queries) GetDocument(ctx context.Context, documentUuid domain.DocumentU
 		&i.BillingDocument.TotalGrossAmount,
 		&i.BillingDocument.SellerUuid,
 		&i.BillingDocument.BuyerUuid,
+		&i.BillingDocument.FileUrl,
 		&i.BillingLegalEntitySnapshot.SnapshotUuid,
 		&i.BillingLegalEntitySnapshot.Name,
 		&i.BillingLegalEntitySnapshot.Address,
@@ -58,7 +59,7 @@ func (q *Queries) GetDocument(ctx context.Context, documentUuid domain.DocumentU
 }
 
 const getDocumentByExternalReference = `-- name: GetDocumentByExternalReference :one
-SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount, seller_uuid, buyer_uuid FROM billing.documents WHERE external_reference = $1
+SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount, seller_uuid, buyer_uuid, file_url FROM billing.documents WHERE external_reference = $1
 `
 
 func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalReference *string) (BillingDocument, error) {
@@ -77,6 +78,7 @@ func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalRe
 		&i.TotalGrossAmount,
 		&i.SellerUuid,
 		&i.BuyerUuid,
+		&i.FileUrl,
 	)
 	return i, err
 }
@@ -292,5 +294,19 @@ func (q *Queries) SaveDocumentTax(ctx context.Context, arg SaveDocumentTaxParams
 		arg.NetAmount,
 		arg.TaxAmount,
 	)
+	return err
+}
+
+const updateDocumentFileUrl = `-- name: UpdateDocumentFileUrl :exec
+UPDATE billing.documents SET file_url = $2 WHERE document_uuid = $1
+`
+
+type UpdateDocumentFileUrlParams struct {
+	DocumentUuid domain.DocumentUUID
+	FileUrl      *string
+}
+
+func (q *Queries) UpdateDocumentFileUrl(ctx context.Context, arg UpdateDocumentFileUrlParams) error {
+	_, err := q.db.Exec(ctx, updateDocumentFileUrl, arg.DocumentUuid, arg.FileUrl)
 	return err
 }

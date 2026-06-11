@@ -64,3 +64,6 @@ WHERE document_uuid = $1;
 -- name: GetDocumentTaxes :many
 SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount from billing.document_taxes
 WHERE document_uuid = $1;
+
+-- name: UpdateDocumentFileUrl :exec
+UPDATE billing.documents SET file_url = $2 WHERE document_uuid = $1;

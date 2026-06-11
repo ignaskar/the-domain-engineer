@@ -63,6 +63,17 @@ func documentToResponse(doc *domain.Document) DocumentResponse {
 	}
 }
 
+func (h Handler) PrintDocument(ctx context.Context, request PrintDocumentRequestObject) (PrintDocumentResponseObject, error) {
+	cmd := command.PrintDocument{DocumentUUID: request.DocumentUuid}
+
+	err := h.commands.PrintDocument(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return PrintDocument204Response{}, nil
+}
+
 func legalEntityToResponse(le domain.LegalEntity) LegalEntity {
 	return LegalEntity{
 		Name: le.Name(),

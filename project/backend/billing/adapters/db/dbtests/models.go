@@ -67,6 +67,7 @@ type BillingDocument struct {
 	TotalGrossAmount  pgtype.Numeric
 	SellerUuid        pgtype.UUID
 	BuyerUuid         pgtype.UUID
+	FileUrl           pgtype.Text
 }
 
 type BillingDocumentLineItem struct {

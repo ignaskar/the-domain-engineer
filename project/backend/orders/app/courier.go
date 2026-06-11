@@ -144,7 +144,7 @@ func newPlatformLegalEntity() (billingClient.LegalEntity, error) {
 		return billingClient.LegalEntity{}, err
 	}
 
-	var platformSeller = billingClient.LegalEntity{
+	platformSeller := billingClient.LegalEntity{
 		Name:    "Eats Platform",
 		Address: addr,
 		TaxID:   &taxID,
