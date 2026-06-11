@@ -155,11 +155,14 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 	err = q.SaveDocumentSeries(ctx, seriesStr)
 	require.NoError(t, err)
 
+	seller := newSeller(t)
+	buyer := newBuyer(t)
+
 	documentData := domain.NewDocumentData{
 		IssueDate: time.Now(),
 		Currency:  shared.MustNewCurrency("USD"),
-		Seller:    newSeller(t),
-		Buyer:     newBuyer(t),
+		Seller:    seller,
+		Buyer:     buyer,
 		LineItems: []domain.NewLineItemData{
 			{
 				Name:       "Pizza Margherita",
@@ -193,6 +196,27 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 
 	assert.True(t, doc.Summary().GrossAmount().GreaterThan(decimal.Zero))
 	assert.True(t, doc.Summary().NetAmount().GreaterThan(decimal.Zero))
+
+	assert.Equal(t, seller.Name(), doc.Seller().Name())
+	assert.Equal(t, seller.Address().Line1(), doc.Seller().Address().Line1())
+	assert.Equal(t, seller.Address().City(), doc.Seller().Address().City())
+	assert.Equal(t, seller.Address().PostalCode(), doc.Seller().Address().PostalCode())
+	assert.Equal(t, seller.Address().CountryCode(), doc.Seller().Address().CountryCode())
+	require.NotNil(t, doc.Seller().TaxID())
+	assert.Equal(t, seller.TaxID().String(), doc.Seller().TaxID().String())
+
+	assert.Equal(t, buyer.Name(), doc.Buyer().Name())
+	assert.Equal(t, buyer.Address().Line1(), doc.Buyer().Address().Line1())
+	assert.Equal(t, buyer.Address().City(), doc.Buyer().Address().City())
+	assert.Equal(t, buyer.Address().PostalCode(), doc.Buyer().Address().PostalCode())
+	assert.Equal(t, buyer.Address().CountryCode(), doc.Buyer().Address().CountryCode())
+	assert.Nil(t, doc.Buyer().TaxID())
+
+	taxes := doc.Summary().Taxes()
+	require.Len(t, taxes, 1)
+	assert.True(t, taxes[0].TaxRate().Rate().Equal(decimal.NewFromFloat(0.10)))
+	assert.True(t, taxes[0].NetAmount().GreaterThan(decimal.Zero))
+	assert.True(t, taxes[0].TaxAmount().GreaterThan(decimal.Zero))
 }
 
 func newSeller(t *testing.T) domain.LegalEntity {

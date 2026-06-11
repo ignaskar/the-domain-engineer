@@ -58,24 +58,28 @@ func (r *PostgresRepository) CreateDocument(
 			externalReference = *doc.ExternalReference()
 		}
 
-		sellerSnapshotUUID := common.NewUUIDv7()
+		sellerUUID := common.NewUUIDv7()
+		buyerUUID := common.NewUUIDv7()
+
 		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
-			SnapshotUuid: sellerSnapshotUUID,
+			SnapshotUuid: sellerUUID,
 			Name:         doc.Seller().Name(),
 			Address:      doc.Seller().Address(),
 			TaxID:        doc.Seller().TaxID(),
 		})
 		if err != nil {
-			return fmt.Errorf("error saving seller legal entity snapshot: %w", err)
+			return fmt.Errorf("error saving seller legal entity: %w", err)
 		}
 
-		buyerSnapshotUUID := common.NewUUIDv7()
 		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
-			SnapshotUuid: buyerSnapshotUUID,
+			SnapshotUuid: buyerUUID,
 			Name:         doc.Buyer().Name(),
 			Address:      doc.Buyer().Address(),
 			TaxID:        doc.Buyer().TaxID(),
 		})
+		if err != nil {
+			return fmt.Errorf("error saving buyer legal entity: %w", err)
+		}
 
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
 			DocumentUuid:      doc.UUID(),
@@ -88,8 +92,8 @@ func (r *PostgresRepository) CreateDocument(
 			TotalNetAmount:    doc.Summary().NetAmount(),
 			TotalTaxAmount:    doc.Summary().TaxAmount(),
 			TotalGrossAmount:  doc.Summary().GrossAmount(),
-			BuyerUuid:         buyerSnapshotUUID,
-			SellerUuid:        sellerSnapshotUUID,
+			SellerUuid:        sellerUUID,
+			BuyerUuid:         buyerUUID,
 		})
 		if err != nil {
 			return fmt.Errorf("error saving document: %w", err)
@@ -116,10 +120,10 @@ func (r *PostgresRepository) CreateDocument(
 		}
 
 		for _, tax := range doc.Summary().Taxes() {
-			err = queries.SaveDocumentTax(ctx, dbmodels.SaveDocumentTaxParams{
+			err := queries.SaveDocumentTax(ctx, dbmodels.SaveDocumentTaxParams{
 				DocumentUuid: doc.UUID(),
-				TaxRate:      tax.TaxRate().Rate(),
 				TaxType:      tax.TaxRate().TaxType(),
+				TaxRate:      tax.TaxRate().Rate(),
 				NetAmount:    tax.NetAmount(),
 				TaxAmount:    tax.TaxAmount(),
 			})
@@ -196,16 +200,20 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		))
 	}
 
+	var taxes []domain.TaxSummary
+
 	dbTaxes, err := queries.GetDocumentTaxes(ctx, docUUID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting document taxes: %w", err)
 	}
 
-	var taxes []domain.TaxSummary
 	for _, dbTax := range dbTaxes {
 		taxRate := domain.UnmarshalTaxRate(dbTax.TaxRate, dbTax.TaxType)
-		tax := domain.UnmarshalTaxSummary(taxRate, dbTax.NetAmount, dbTax.TaxAmount)
-		taxes = append(taxes, tax)
+		taxes = append(taxes, domain.UnmarshalTaxSummary(
+			taxRate,
+			dbTax.NetAmount,
+			dbTax.TaxAmount,
+		))
 	}
 
 	summary := domain.UnmarshalPriceBreakdownSummary(

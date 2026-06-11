@@ -120,7 +120,7 @@ func (q *Queries) GetDocumentLineItems(ctx context.Context, documentUuid domain.
 }
 
 const getDocumentTaxes = `-- name: GetDocumentTaxes :many
-SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount FROM billing.document_taxes
+SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount from billing.document_taxes
 WHERE document_uuid = $1
 `
 
@@ -166,35 +166,14 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 }
 
 const saveDocument = `-- name: SaveDocument :exec
-INSERT INTO billing.documents
-(
-    document_uuid,
-    external_reference,
-    document_number,
-    series_prefix,
-    document_type,
-    issue_date,
-    currency,
-    total_net_amount,
-    total_tax_amount,
-    total_gross_amount,
-    buyer_uuid,
-    seller_uuid
+INSERT INTO billing.documents (
+    document_uuid, external_reference, document_number, series_prefix, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount, seller_uuid, buyer_uuid
 )
-VALUES
-(
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10,
-    $11,
-    $12
+VALUES (
+    $1, $2, $3, $4,
+    $5, $6, $7,
+    $8, $9, $10,
+    $11, $12
 )
 `
 
@@ -209,8 +188,8 @@ type SaveDocumentParams struct {
 	TotalNetAmount    decimal.Decimal
 	TotalTaxAmount    decimal.Decimal
 	TotalGrossAmount  decimal.Decimal
-	BuyerUuid         common.UUID
 	SellerUuid        common.UUID
+	BuyerUuid         common.UUID
 }
 
 func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) error {
@@ -225,8 +204,8 @@ func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) erro
 		arg.TotalNetAmount,
 		arg.TotalTaxAmount,
 		arg.TotalGrossAmount,
-		arg.BuyerUuid,
 		arg.SellerUuid,
+		arg.BuyerUuid,
 	)
 	return err
 }
@@ -287,28 +266,20 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 }
 
 const saveDocumentTax = `-- name: SaveDocumentTax :exec
-INSERT INTO billing.document_taxes
-(
-    document_uuid,
-    tax_rate,
-    tax_type,
-    net_amount,
-    tax_amount
-)
-VALUES
-(
+INSERT INTO billing.document_taxes (document_uuid, tax_type, tax_rate, net_amount, tax_amount
+) VALUES (
     $1,
     $2,
     $3,
     $4,
     $5
-)
+ )
 `
 
 type SaveDocumentTaxParams struct {
 	DocumentUuid domain.DocumentUUID
-	TaxRate      decimal.Decimal
 	TaxType      domain.TaxType
+	TaxRate      decimal.Decimal
 	NetAmount    decimal.Decimal
 	TaxAmount    decimal.Decimal
 }
@@ -316,8 +287,8 @@ type SaveDocumentTaxParams struct {
 func (q *Queries) SaveDocumentTax(ctx context.Context, arg SaveDocumentTaxParams) error {
 	_, err := q.db.Exec(ctx, saveDocumentTax,
 		arg.DocumentUuid,
-		arg.TaxRate,
 		arg.TaxType,
+		arg.TaxRate,
 		arg.NetAmount,
 		arg.TaxAmount,
 	)

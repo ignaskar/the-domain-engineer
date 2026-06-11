@@ -6,35 +6,14 @@ WHERE prefix = $1
 RETURNING last_number;
 
 -- name: SaveDocument :exec
-INSERT INTO billing.documents
-(
-    document_uuid,
-    external_reference,
-    document_number,
-    series_prefix,
-    document_type,
-    issue_date,
-    currency,
-    total_net_amount,
-    total_tax_amount,
-    total_gross_amount,
-    buyer_uuid,
-    seller_uuid
+INSERT INTO billing.documents (
+    document_uuid, external_reference, document_number, series_prefix, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount, seller_uuid, buyer_uuid
 )
-VALUES
-(
-    sqlc.arg(document_uuid),
-    sqlc.arg(external_reference),
-    sqlc.arg(document_number),
-    sqlc.arg(series_prefix),
-    sqlc.arg(document_type),
-    sqlc.arg(issue_date),
-    sqlc.arg(currency),
-    sqlc.arg(total_net_amount),
-    sqlc.arg(total_tax_amount),
-    sqlc.arg(total_gross_amount),
-    sqlc.arg(buyer_uuid),
-    sqlc.arg(seller_uuid)
+VALUES (
+    sqlc.arg(document_uuid), sqlc.arg(external_reference), sqlc.arg(document_number), sqlc.arg(series_prefix),
+    sqlc.arg(document_type), sqlc.arg(issue_date), sqlc.arg(currency),
+    sqlc.arg(total_net_amount), sqlc.arg(total_tax_amount), sqlc.arg(total_gross_amount),
+    sqlc.arg(seller_uuid), sqlc.arg(buyer_uuid)
 );
 
 -- name: SaveDocumentLineItem :exec
@@ -58,6 +37,16 @@ INSERT INTO billing.document_line_items (
     sqlc.arg(tax_type)
 );
 
+-- name: SaveDocumentTax :exec
+INSERT INTO billing.document_taxes (document_uuid, tax_type, tax_rate, net_amount, tax_amount
+) VALUES (
+    sqlc.arg(document_uuid),
+    sqlc.arg(tax_type),
+    sqlc.arg(tax_rate),
+    sqlc.arg(net_amount),
+    sqlc.arg(tax_amount)
+ );
+
 -- name: GetDocument :one
 SELECT sqlc.embed(documents), sqlc.embed(seller), sqlc.embed(buyer)
 FROM billing.documents AS documents
@@ -72,24 +61,6 @@ SELECT * FROM billing.documents WHERE external_reference = $1;
 SELECT * from billing.document_line_items
 WHERE document_uuid = $1;
 
--- name: SaveDocumentTax :exec
-INSERT INTO billing.document_taxes
-(
-    document_uuid,
-    tax_rate,
-    tax_type,
-    net_amount,
-    tax_amount
-)
-VALUES
-(
-    sqlc.arg(document_uuid),
-    sqlc.arg(tax_rate),
-    sqlc.arg(tax_type),
-    sqlc.arg(net_amount),
-    sqlc.arg(tax_amount)
-);
-
 -- name: GetDocumentTaxes :many
-SELECT * FROM billing.document_taxes
+SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount from billing.document_taxes
 WHERE document_uuid = $1;

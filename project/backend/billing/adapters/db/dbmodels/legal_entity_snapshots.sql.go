@@ -13,19 +13,12 @@ import (
 )
 
 const saveLegalEntitySnapshot = `-- name: SaveLegalEntitySnapshot :exec
-INSERT INTO billing.legal_entity_snapshots
-(
- snapshot_uuid,
- name,
- address,
- tax_id
+INSERT INTO billing.legal_entity_snapshots (
+    snapshot_uuid, name, address, tax_id
 )
-VALUES
-(
-    $1,
-    $2,
-    $3,
-    $4
+VALUES (
+    $1, $2,
+    $3, $4
 )
 `
 
