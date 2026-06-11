@@ -2,6 +2,8 @@ package module
 
 import (
 	"context"
+	"fmt"
+
 	"eats/backend/billing/api/module/client"
 	"eats/backend/billing/app/command"
 	"eats/backend/billing/domain"
@@ -27,38 +29,39 @@ func New(
 func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptRequest) error {
 	buyer, err := newDomainLegalEntityFromContract(req.Buyer)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not create buyer domain legal entity: %w", err)
 	}
 
 	seller, err := newDomainLegalEntityFromContract(req.Seller)
 	if err != nil {
+		return fmt.Errorf("could not create seller domain legal entity: %w", err)
+	}
+
+	lineItems := make([]domain.NewLineItemData, 0, len(req.LineItems))
+	for _, lineItem := range req.LineItems {
+		domainLineItem := domain.NewLineItemData{
+			Name:       lineItem.Name,
+			Quantity:   lineItem.Quantity,
+			UnitAmount: lineItem.UnitAmount,
+		}
+		lineItems = append(lineItems, domainLineItem)
+	}
+
+	_, err = b.commandHandlers.IssueReceipt(ctx, command.IssueReceipt{
+		DocumentData: domain.NewDocumentData{
+			ExternalReference: req.ExternalReference,
+			IssueDate:         req.IssueDate,
+			Currency:          req.Currency,
+			Seller:            *seller,
+			Buyer:             *buyer,
+			LineItems:         lineItems,
+		},
+	})
+	if err != nil {
 		return err
 	}
 
-	var lineItemData []domain.NewLineItemData
-	for _, li := range req.LineItems {
-		lid := domain.NewLineItemData{
-			Name:       li.Name,
-			Quantity:   li.Quantity,
-			UnitAmount: li.UnitAmount,
-		}
-		lineItemData = append(lineItemData, lid)
-	}
-
-	dd := domain.NewDocumentData{
-		ExternalReference: req.ExternalReference,
-		IssueDate:         req.IssueDate,
-		Currency:          req.Currency,
-		Seller:            *seller,
-		Buyer:             *buyer,
-		LineItems:         lineItemData,
-	}
-	cmd := command.IssueReceipt{
-		DocumentData: dd,
-	}
-
-	_, err = b.commandHandlers.IssueReceipt(ctx, cmd)
-	return err
+	return nil
 }
 
 func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntity, error) {
@@ -70,12 +73,16 @@ func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntit
 		le.Address.CountryCode(),
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating address from contract: %w", err)
 	}
 
-	domainLe, err := domain.NewLegalEntity(le.Name, address, le.TaxID)
+	domainLe, err := domain.NewLegalEntity(
+		le.Name,
+		address,
+		le.TaxID,
+	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating domain le: %w", err)
 	}
 
 	return &domainLe, nil
