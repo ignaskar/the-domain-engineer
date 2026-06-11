@@ -8,6 +8,7 @@ import (
 
 	billingdb "eats/backend/billing/adapters/db"
 	"eats/backend/billing/api/http"
+	billingModule "eats/backend/billing/api/module"
 	"eats/backend/billing/app/command"
 	"eats/backend/billing/app/query"
 	"eats/backend/common"
@@ -53,6 +54,7 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Contracts) error {
+	contracts.Billing = billingModule.New(m.commandHandlers)
 	return nil
 }
 
