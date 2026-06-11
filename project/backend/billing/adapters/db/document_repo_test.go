@@ -49,9 +49,10 @@ func TestCreateDocument_ConcurrentDocumentNumbers(t *testing.T) {
 		Buyer:     newBuyer(t),
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Test Item",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+				Name:         "Test Item",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("10.00")),
 			},
 		},
 	}
@@ -113,9 +114,10 @@ func TestCreateDocument_ExternalReference(t *testing.T) {
 		Buyer:             newBuyer(t),
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Test Item",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+				Name:         "Test Item",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("10.00")),
 			},
 		},
 	}
@@ -165,14 +167,16 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 		Buyer:     buyer,
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Pizza Margherita",
-				Quantity:   2,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("12.30")),
+				Name:         "Pizza Margherita",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     2,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("12.30")),
 			},
 			{
-				Name:       "Delivery Fee",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("5.00")),
+				Name:         "Delivery Fee",
+				LineItemType: shared.LineItemTypeDelivery,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("5.00")),
 			},
 		},
 	}
@@ -190,9 +194,11 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 
 	assert.Equal(t, "Pizza Margherita", doc.LineItems()[0].Name())
 	assert.Equal(t, 2, doc.LineItems()[0].Quantity())
+	assert.Equal(t, shared.LineItemTypeFood, doc.LineItems()[0].LineItemType())
 
 	assert.Equal(t, "Delivery Fee", doc.LineItems()[1].Name())
 	assert.Equal(t, 1, doc.LineItems()[1].Quantity())
+	assert.Equal(t, shared.LineItemTypeDelivery, doc.LineItems()[1].LineItemType())
 
 	assert.True(t, doc.Summary().GrossAmount().GreaterThan(decimal.Zero))
 	assert.True(t, doc.Summary().NetAmount().GreaterThan(decimal.Zero))

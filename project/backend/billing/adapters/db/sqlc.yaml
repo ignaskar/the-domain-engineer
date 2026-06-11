@@ -70,6 +70,11 @@ sql:
               import: "eats/backend/billing/domain"
               type: "LineItemUUID"
 
+          - column: "billing.document_line_items.line_item_type"
+            go_type:
+              import: "eats/backend/common/shared"
+              type: "LineItemType"
+
           - column: "billing.document_line_items.tax_type"
             go_type:
               import: "eats/backend/billing/domain"

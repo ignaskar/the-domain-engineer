@@ -988,10 +988,11 @@ func issueReceipt(
 		},
 		LineItems: []billingclient.LineItem{
 			{
-				Name:       "Classic Burger",
-				Quantity:   2,
-				UnitAmount: decimal.RequireFromString("12.50"),
-				IsGross:    true,
+				Name:         "Classic Burger",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     2,
+				UnitAmount:   decimal.RequireFromString("12.50"),
+				IsGross:      true,
 			},
 		},
 	})
