@@ -132,7 +132,8 @@ type LegalEntity struct {
 
 // LineItem defines model for LineItem.
 type LineItem struct {
-	IsGross bool `json:"is_gross"`
+	IsGross      bool         `json:"is_gross"`
+	LineItemType LineItemType `json:"line_item_type"`
 
 	// Name Item description/name
 	Name string `json:"name"`
@@ -141,6 +142,9 @@ type LineItem struct {
 	Quantity   int     `json:"quantity"`
 	UnitAmount Decimal `json:"unit_amount"`
 }
+
+// LineItemType defines model for LineItemType.
+type LineItemType = shared.LineItemType
 
 // PriceBreakdown defines model for PriceBreakdown.
 type PriceBreakdown struct {
@@ -166,9 +170,10 @@ type PriceBreakdownSummary struct {
 
 // ResponseLineItem defines model for ResponseLineItem.
 type ResponseLineItem struct {
-	Breakdown PriceBreakdown `json:"breakdown"`
-	Name      string         `json:"name"`
-	Quantity  int            `json:"quantity"`
+	Breakdown    PriceBreakdown `json:"breakdown"`
+	LineItemType LineItemType   `json:"line_item_type"`
+	Name         string         `json:"name"`
+	Quantity     int            `json:"quantity"`
 }
 
 // TaxID Tax identification number

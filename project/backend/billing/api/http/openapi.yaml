@@ -182,6 +182,7 @@ components:
       type: object
       required:
         - name
+        - line_item_type
         - quantity
         - unit_amount
         - is_gross
@@ -189,6 +190,8 @@ components:
         name:
           type: string
           description: Item description/name
+        line_item_type:
+          $ref: '#/components/schemas/LineItemType'
         quantity:
           type: integer
           minimum: 1
@@ -197,6 +200,12 @@ components:
           $ref: '#/components/schemas/Decimal'
         is_gross:
           type: boolean
+
+    LineItemType:
+      type: string
+      x-go-type: shared.LineItemType
+      x-go-type-import:
+        path: eats/backend/common/shared
 
     DocumentUUID:
       type: string
@@ -275,6 +284,7 @@ components:
         - name
         - quantity
         - breakdown
+        - line_item_type
       properties:
         name:
           type: string
@@ -282,6 +292,8 @@ components:
           type: integer
         breakdown:
           $ref: '#/components/schemas/PriceBreakdown'
+        line_item_type:
+            $ref: '#/components/schemas/LineItemType'
 
     PriceBreakdown:
       type: object

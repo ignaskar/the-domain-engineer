@@ -54,19 +54,22 @@ func TestPrintReceipt_Golden(t *testing.T) {
 		Buyer:             buyer,
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Pepperoni Pizza",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.NewFromFloat(15.99)),
+				Name:         "Pepperoni Pizza",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.NewFromFloat(15.99)),
 			},
 			{
-				Name:       "Garlic Bread",
-				Quantity:   2,
-				UnitAmount: shared.NewGrossAmount(decimal.NewFromFloat(2.50)),
+				Name:         "Garlic Bread",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     2,
+				UnitAmount:   shared.NewGrossAmount(decimal.NewFromFloat(2.50)),
 			},
 			{
-				Name:       "Delivery",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.NewFromFloat(5.00)),
+				Name:         "Delivery",
+				LineItemType: shared.LineItemTypeDelivery,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.NewFromFloat(5.00)),
 			},
 		},
 	}, docNumber)

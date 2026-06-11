@@ -49,9 +49,10 @@ func TestCreateDocument_ConcurrentDocumentNumbers(t *testing.T) {
 		Buyer:     newBuyer(t),
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Test Item",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+				Name:         "Test Item",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("10.00")),
 			},
 		},
 	}
@@ -113,9 +114,10 @@ func TestCreateDocument_ExternalReference(t *testing.T) {
 		Buyer:             newBuyer(t),
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Test Item",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+				Name:         "Test Item",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("10.00")),
 			},
 		},
 	}
@@ -155,21 +157,26 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 	err = q.SaveDocumentSeries(ctx, seriesStr)
 	require.NoError(t, err)
 
+	seller := newSeller(t)
+	buyer := newBuyer(t)
+
 	documentData := domain.NewDocumentData{
 		IssueDate: time.Now(),
 		Currency:  shared.MustNewCurrency("USD"),
-		Seller:    newSeller(t),
-		Buyer:     newBuyer(t),
+		Seller:    seller,
+		Buyer:     buyer,
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:       "Pizza Margherita",
-				Quantity:   2,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("12.30")),
+				Name:         "Pizza Margherita",
+				LineItemType: shared.LineItemTypeFood,
+				Quantity:     2,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("12.30")),
 			},
 			{
-				Name:       "Delivery Fee",
-				Quantity:   1,
-				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("5.00")),
+				Name:         "Delivery Fee",
+				LineItemType: shared.LineItemTypeDelivery,
+				Quantity:     1,
+				UnitAmount:   shared.NewGrossAmount(decimal.RequireFromString("5.00")),
 			},
 		},
 	}
@@ -187,12 +194,35 @@ func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
 
 	assert.Equal(t, "Pizza Margherita", doc.LineItems()[0].Name())
 	assert.Equal(t, 2, doc.LineItems()[0].Quantity())
+	assert.Equal(t, shared.LineItemTypeFood, doc.LineItems()[0].LineItemType())
 
 	assert.Equal(t, "Delivery Fee", doc.LineItems()[1].Name())
 	assert.Equal(t, 1, doc.LineItems()[1].Quantity())
+	assert.Equal(t, shared.LineItemTypeDelivery, doc.LineItems()[1].LineItemType())
 
 	assert.True(t, doc.Summary().GrossAmount().GreaterThan(decimal.Zero))
 	assert.True(t, doc.Summary().NetAmount().GreaterThan(decimal.Zero))
+
+	assert.Equal(t, seller.Name(), doc.Seller().Name())
+	assert.Equal(t, seller.Address().Line1(), doc.Seller().Address().Line1())
+	assert.Equal(t, seller.Address().City(), doc.Seller().Address().City())
+	assert.Equal(t, seller.Address().PostalCode(), doc.Seller().Address().PostalCode())
+	assert.Equal(t, seller.Address().CountryCode(), doc.Seller().Address().CountryCode())
+	require.NotNil(t, doc.Seller().TaxID())
+	assert.Equal(t, seller.TaxID().String(), doc.Seller().TaxID().String())
+
+	assert.Equal(t, buyer.Name(), doc.Buyer().Name())
+	assert.Equal(t, buyer.Address().Line1(), doc.Buyer().Address().Line1())
+	assert.Equal(t, buyer.Address().City(), doc.Buyer().Address().City())
+	assert.Equal(t, buyer.Address().PostalCode(), doc.Buyer().Address().PostalCode())
+	assert.Equal(t, buyer.Address().CountryCode(), doc.Buyer().Address().CountryCode())
+	assert.Nil(t, doc.Buyer().TaxID())
+
+	taxes := doc.Summary().Taxes()
+	require.Len(t, taxes, 1)
+	assert.True(t, taxes[0].TaxRate().Rate().Equal(decimal.NewFromFloat(0.10)))
+	assert.True(t, taxes[0].NetAmount().GreaterThan(decimal.Zero))
+	assert.True(t, taxes[0].TaxAmount().GreaterThan(decimal.Zero))
 }
 
 func newSeller(t *testing.T) domain.LegalEntity {
