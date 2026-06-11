@@ -2,6 +2,8 @@ package query
 
 import (
 	"context"
+	"fmt"
+
 	"eats/backend/billing/domain"
 )
 
@@ -10,5 +12,10 @@ type GetDocumentByUUID struct {
 }
 
 func (h *Handlers) GetDocumentByUUID(ctx context.Context, query GetDocumentByUUID) (*domain.Document, error) {
-	return h.documentRepository.DocumentByUUID(ctx, query.DocumentUUID)
+	doc, err := h.documentRepository.DocumentByUUID(ctx, query.DocumentUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting document by uuid: %w", err)
+	}
+
+	return doc, nil
 }
