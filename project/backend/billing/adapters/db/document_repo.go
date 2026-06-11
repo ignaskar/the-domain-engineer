@@ -61,7 +61,7 @@ func (r *PostgresRepository) CreateDocument(
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
 			DocumentUuid:      doc.UUID(),
 			ExternalReference: doc.ExternalReference(),
-			DocumentNumber:    docNumber.String(),
+			DocumentNumber:    doc.DocumentNumber().String(),
 			SeriesPrefix:      series.String(),
 			DocumentType:      doc.DocumentType(),
 			IssueDate:         doc.IssueDate(),
@@ -74,23 +74,23 @@ func (r *PostgresRepository) CreateDocument(
 			return fmt.Errorf("error saving document: %w", err)
 		}
 
-		for _, li := range doc.LineItems() {
-			err = queries.SaveDocumentLineItem(ctx, dbmodels.SaveDocumentLineItemParams{
-				LineItemUuid:    li.UUID(),
+		for _, lineItem := range doc.LineItems() {
+			err := queries.SaveDocumentLineItem(ctx, dbmodels.SaveDocumentLineItemParams{
+				LineItemUuid:    lineItem.UUID(),
 				DocumentUuid:    doc.UUID(),
-				Name:            li.Name(),
-				Quantity:        int32(li.Quantity()),
-				UnitNetAmount:   li.PriceBreakdown().UnitNetAmount(),
-				UnitTaxAmount:   li.PriceBreakdown().UnitTaxAmount(),
-				UnitGrossAmount: li.PriceBreakdown().UnitGrossAmount(),
-				NetAmount:       li.PriceBreakdown().NetAmount(),
-				TaxAmount:       li.PriceBreakdown().TaxAmount(),
-				GrossAmount:     li.PriceBreakdown().GrossAmount(),
-				TaxRate:         li.PriceBreakdown().TaxRate().Rate(),
-				TaxType:         li.PriceBreakdown().TaxRate().TaxType(),
+				Name:            lineItem.Name(),
+				Quantity:        int32(lineItem.Quantity()),
+				UnitNetAmount:   lineItem.PriceBreakdown().UnitNetAmount(),
+				UnitTaxAmount:   lineItem.PriceBreakdown().UnitTaxAmount(),
+				UnitGrossAmount: lineItem.PriceBreakdown().UnitGrossAmount(),
+				NetAmount:       lineItem.PriceBreakdown().NetAmount(),
+				TaxAmount:       lineItem.PriceBreakdown().TaxAmount(),
+				GrossAmount:     lineItem.PriceBreakdown().GrossAmount(),
+				TaxRate:         lineItem.PriceBreakdown().TaxRate().Rate(),
+				TaxType:         lineItem.PriceBreakdown().TaxRate().TaxType(),
 			})
 			if err != nil {
-				return fmt.Errorf("error saving line item: %w", err)
+				return fmt.Errorf("error saving document line item: %w", err)
 			}
 		}
 
@@ -136,16 +136,6 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		return nil, fmt.Errorf("error getting document by uuid: %w", err)
 	}
 
-	series, err := domain.NewDocumentSeries(dbDoc.SeriesPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing document series: %w", err)
-	}
-
-	docNumber, err := domain.UnmarshalDocumentNumber(series, dbDoc.DocumentNumber)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing document number: %w", err)
-	}
-
 	dbLineItems, err := queries.GetDocumentLineItems(ctx, docUUID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting document line items: %w", err)
@@ -163,15 +153,30 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 			dbLineItem.TaxAmount,
 			dbLineItem.GrossAmount,
 		)
-		lineItem := domain.UnmarshalLineItem(dbLineItem.LineItemUuid, dbLineItem.Name, breakdown, int(dbLineItem.Quantity))
-		lineItems = append(lineItems, lineItem)
+
+		lineItems = append(lineItems, domain.UnmarshalLineItem(
+			dbLineItem.LineItemUuid,
+			dbLineItem.Name,
+			breakdown,
+			int(dbLineItem.Quantity),
+		))
 	}
 
 	summary := domain.UnmarshalPriceBreakdownSummary(
-		dbDoc.TotalNetAmount, dbDoc.TotalTaxAmount, dbDoc.TotalGrossAmount, nil,
+		dbDoc.TotalNetAmount,
+		dbDoc.TotalTaxAmount,
+		dbDoc.TotalGrossAmount,
+		nil,
 	)
 
-	return domain.UnmarshalDocument(
+	docSeries, err := domain.NewDocumentSeries(dbDoc.SeriesPrefix)
+
+	docNumber, err := domain.UnmarshalDocumentNumber(docSeries, dbDoc.DocumentNumber)
+	if err != nil {
+		return nil, fmt.Errorf("error creating document number: %w", err)
+	}
+
+	doc := domain.UnmarshalDocument(
 		dbDoc.DocumentUuid,
 		dbDoc.ExternalReference,
 		docNumber,
@@ -182,5 +187,7 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		domain.LegalEntity{},
 		lineItems,
 		summary,
-	), nil
+	)
+
+	return doc, nil
 }

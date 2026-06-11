@@ -15,7 +15,8 @@ import (
 )
 
 const getDocument = `-- name: GetDocument :one
-SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount FROM billing.documents WHERE document_uuid = $1
+SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount FROM billing.documents
+WHERE document_uuid = $1 LIMIT 1
 `
 
 func (q *Queries) GetDocument(ctx context.Context, documentUuid domain.DocumentUUID) (BillingDocument, error) {
@@ -59,8 +60,7 @@ func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalRe
 }
 
 const getDocumentLineItems = `-- name: GetDocumentLineItems :many
-SELECT line_item_uuid, document_uuid, name, quantity, unit_net_amount, unit_tax_amount, unit_gross_amount, net_amount, tax_amount, gross_amount, tax_rate, tax_type
-FROM billing.document_line_items
+SELECT line_item_uuid, document_uuid, name, quantity, unit_net_amount, unit_tax_amount, unit_gross_amount, net_amount, tax_amount, gross_amount, tax_rate, tax_type from billing.document_line_items
 WHERE document_uuid = $1
 `
 
@@ -114,28 +114,12 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 
 const saveDocument = `-- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid,
-    external_reference,
-    document_number,
-    series_prefix,
-    document_type,
-    issue_date,
-    currency,
-    total_net_amount,
-    total_tax_amount,
-    total_gross_amount
+    document_uuid, external_reference, document_number, series_prefix, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount
 )
 VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10
+    $1, $2, $3, $4,
+    $5, $6, $7,
+    $8, $9, $10
 )
 `
 
@@ -169,23 +153,12 @@ func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) erro
 }
 
 const saveDocumentLineItem = `-- name: SaveDocumentLineItem :exec
-INSERT INTO billing.document_line_items
-(
-    line_item_uuid,
-    document_uuid,
-    name,
-    quantity,
-    unit_net_amount,
-    unit_tax_amount,
-    unit_gross_amount,
-    net_amount,
-    tax_amount,
-    gross_amount,
-    tax_rate,
-    tax_type
-)
-VALUES
-(
+INSERT INTO billing.document_line_items (
+    line_item_uuid, document_uuid, name, quantity,
+    unit_net_amount, unit_tax_amount, unit_gross_amount,
+    net_amount, tax_amount, gross_amount,
+    tax_rate, tax_type
+) VALUES (
     $1,
     $2,
     $3,
