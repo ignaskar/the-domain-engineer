@@ -10,35 +10,55 @@ import (
 	"time"
 
 	"eats/backend/billing/domain"
+	"eats/backend/common"
 	"eats/backend/common/shared"
 	"github.com/shopspring/decimal"
 )
 
 const getDocument = `-- name: GetDocument :one
-SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount FROM billing.documents
-WHERE document_uuid = $1 LIMIT 1
+SELECT documents.document_uuid, documents.document_number, documents.series_prefix, documents.external_reference, documents.document_type, documents.issue_date, documents.currency, documents.total_net_amount, documents.total_tax_amount, documents.total_gross_amount, documents.seller_uuid, documents.buyer_uuid, seller.snapshot_uuid, seller.name, seller.address, seller.tax_id, buyer.snapshot_uuid, buyer.name, buyer.address, buyer.tax_id
+FROM billing.documents AS documents
+INNER JOIN billing.legal_entity_snapshots seller ON seller.snapshot_uuid = documents.seller_uuid
+INNER JOIN billing.legal_entity_snapshots buyer ON buyer.snapshot_uuid = documents.buyer_uuid
+WHERE documents.document_uuid = $1 LIMIT 1
 `
 
-func (q *Queries) GetDocument(ctx context.Context, documentUuid domain.DocumentUUID) (BillingDocument, error) {
+type GetDocumentRow struct {
+	BillingDocument              BillingDocument
+	BillingLegalEntitySnapshot   BillingLegalEntitySnapshot
+	BillingLegalEntitySnapshot_2 BillingLegalEntitySnapshot
+}
+
+func (q *Queries) GetDocument(ctx context.Context, documentUuid domain.DocumentUUID) (GetDocumentRow, error) {
 	row := q.db.QueryRow(ctx, getDocument, documentUuid)
-	var i BillingDocument
+	var i GetDocumentRow
 	err := row.Scan(
-		&i.DocumentUuid,
-		&i.DocumentNumber,
-		&i.SeriesPrefix,
-		&i.ExternalReference,
-		&i.DocumentType,
-		&i.IssueDate,
-		&i.Currency,
-		&i.TotalNetAmount,
-		&i.TotalTaxAmount,
-		&i.TotalGrossAmount,
+		&i.BillingDocument.DocumentUuid,
+		&i.BillingDocument.DocumentNumber,
+		&i.BillingDocument.SeriesPrefix,
+		&i.BillingDocument.ExternalReference,
+		&i.BillingDocument.DocumentType,
+		&i.BillingDocument.IssueDate,
+		&i.BillingDocument.Currency,
+		&i.BillingDocument.TotalNetAmount,
+		&i.BillingDocument.TotalTaxAmount,
+		&i.BillingDocument.TotalGrossAmount,
+		&i.BillingDocument.SellerUuid,
+		&i.BillingDocument.BuyerUuid,
+		&i.BillingLegalEntitySnapshot.SnapshotUuid,
+		&i.BillingLegalEntitySnapshot.Name,
+		&i.BillingLegalEntitySnapshot.Address,
+		&i.BillingLegalEntitySnapshot.TaxID,
+		&i.BillingLegalEntitySnapshot_2.SnapshotUuid,
+		&i.BillingLegalEntitySnapshot_2.Name,
+		&i.BillingLegalEntitySnapshot_2.Address,
+		&i.BillingLegalEntitySnapshot_2.TaxID,
 	)
 	return i, err
 }
 
 const getDocumentByExternalReference = `-- name: GetDocumentByExternalReference :one
-SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount FROM billing.documents WHERE external_reference = $1
+SELECT document_uuid, document_number, series_prefix, external_reference, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount, seller_uuid, buyer_uuid FROM billing.documents WHERE external_reference = $1
 `
 
 func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalReference *string) (BillingDocument, error) {
@@ -55,6 +75,8 @@ func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalRe
 		&i.TotalNetAmount,
 		&i.TotalTaxAmount,
 		&i.TotalGrossAmount,
+		&i.SellerUuid,
+		&i.BuyerUuid,
 	)
 	return i, err
 }
@@ -97,6 +119,37 @@ func (q *Queries) GetDocumentLineItems(ctx context.Context, documentUuid domain.
 	return items, nil
 }
 
+const getDocumentTaxes = `-- name: GetDocumentTaxes :many
+SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount FROM billing.document_taxes
+WHERE document_uuid = $1
+`
+
+func (q *Queries) GetDocumentTaxes(ctx context.Context, documentUuid domain.DocumentUUID) ([]BillingDocumentTax, error) {
+	rows, err := q.db.Query(ctx, getDocumentTaxes, documentUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []BillingDocumentTax{}
+	for rows.Next() {
+		var i BillingDocumentTax
+		if err := rows.Scan(
+			&i.DocumentUuid,
+			&i.TaxRate,
+			&i.TaxType,
+			&i.NetAmount,
+			&i.TaxAmount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const nextDocumentNumber = `-- name: NextDocumentNumber :one
 UPDATE billing.document_series
 SET last_number = last_number + 1,
@@ -113,13 +166,35 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 }
 
 const saveDocument = `-- name: SaveDocument :exec
-INSERT INTO billing.documents (
-    document_uuid, external_reference, document_number, series_prefix, document_type, issue_date, currency, total_net_amount, total_tax_amount, total_gross_amount
+INSERT INTO billing.documents
+(
+    document_uuid,
+    external_reference,
+    document_number,
+    series_prefix,
+    document_type,
+    issue_date,
+    currency,
+    total_net_amount,
+    total_tax_amount,
+    total_gross_amount,
+    buyer_uuid,
+    seller_uuid
 )
-VALUES (
-    $1, $2, $3, $4,
-    $5, $6, $7,
-    $8, $9, $10
+VALUES
+(
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12
 )
 `
 
@@ -134,6 +209,8 @@ type SaveDocumentParams struct {
 	TotalNetAmount    decimal.Decimal
 	TotalTaxAmount    decimal.Decimal
 	TotalGrossAmount  decimal.Decimal
+	BuyerUuid         common.UUID
+	SellerUuid        common.UUID
 }
 
 func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) error {
@@ -148,6 +225,8 @@ func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) erro
 		arg.TotalNetAmount,
 		arg.TotalTaxAmount,
 		arg.TotalGrossAmount,
+		arg.BuyerUuid,
+		arg.SellerUuid,
 	)
 	return err
 }
@@ -203,6 +282,44 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 		arg.GrossAmount,
 		arg.TaxRate,
 		arg.TaxType,
+	)
+	return err
+}
+
+const saveDocumentTax = `-- name: SaveDocumentTax :exec
+INSERT INTO billing.document_taxes
+(
+    document_uuid,
+    tax_rate,
+    tax_type,
+    net_amount,
+    tax_amount
+)
+VALUES
+(
+    $1,
+    $2,
+    $3,
+    $4,
+    $5
+)
+`
+
+type SaveDocumentTaxParams struct {
+	DocumentUuid domain.DocumentUUID
+	TaxRate      decimal.Decimal
+	TaxType      domain.TaxType
+	NetAmount    decimal.Decimal
+	TaxAmount    decimal.Decimal
+}
+
+func (q *Queries) SaveDocumentTax(ctx context.Context, arg SaveDocumentTaxParams) error {
+	_, err := q.db.Exec(ctx, saveDocumentTax,
+		arg.DocumentUuid,
+		arg.TaxRate,
+		arg.TaxType,
+		arg.NetAmount,
+		arg.TaxAmount,
 	)
 	return err
 }

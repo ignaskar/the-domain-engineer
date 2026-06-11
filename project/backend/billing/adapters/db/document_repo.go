@@ -58,6 +58,25 @@ func (r *PostgresRepository) CreateDocument(
 			externalReference = *doc.ExternalReference()
 		}
 
+		sellerSnapshotUUID := common.NewUUIDv7()
+		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
+			SnapshotUuid: sellerSnapshotUUID,
+			Name:         doc.Seller().Name(),
+			Address:      doc.Seller().Address(),
+			TaxID:        doc.Seller().TaxID(),
+		})
+		if err != nil {
+			return fmt.Errorf("error saving seller legal entity snapshot: %w", err)
+		}
+
+		buyerSnapshotUUID := common.NewUUIDv7()
+		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
+			SnapshotUuid: buyerSnapshotUUID,
+			Name:         doc.Buyer().Name(),
+			Address:      doc.Buyer().Address(),
+			TaxID:        doc.Buyer().TaxID(),
+		})
+
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
 			DocumentUuid:      doc.UUID(),
 			ExternalReference: doc.ExternalReference(),
@@ -69,6 +88,8 @@ func (r *PostgresRepository) CreateDocument(
 			TotalNetAmount:    doc.Summary().NetAmount(),
 			TotalTaxAmount:    doc.Summary().TaxAmount(),
 			TotalGrossAmount:  doc.Summary().GrossAmount(),
+			BuyerUuid:         buyerSnapshotUUID,
+			SellerUuid:        sellerSnapshotUUID,
 		})
 		if err != nil {
 			return fmt.Errorf("error saving document: %w", err)
@@ -91,6 +112,19 @@ func (r *PostgresRepository) CreateDocument(
 			})
 			if err != nil {
 				return fmt.Errorf("error saving document line item: %w", err)
+			}
+		}
+
+		for _, tax := range doc.Summary().Taxes() {
+			err = queries.SaveDocumentTax(ctx, dbmodels.SaveDocumentTaxParams{
+				DocumentUuid: doc.UUID(),
+				TaxRate:      tax.TaxRate().Rate(),
+				TaxType:      tax.TaxRate().TaxType(),
+				NetAmount:    tax.NetAmount(),
+				TaxAmount:    tax.TaxAmount(),
+			})
+			if err != nil {
+				return fmt.Errorf("error saving document tax: %w", err)
 			}
 		}
 
@@ -162,29 +196,59 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		))
 	}
 
+	dbTaxes, err := queries.GetDocumentTaxes(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting document taxes: %w", err)
+	}
+
+	var taxes []domain.TaxSummary
+	for _, dbTax := range dbTaxes {
+		taxRate := domain.UnmarshalTaxRate(dbTax.TaxRate, dbTax.TaxType)
+		tax := domain.UnmarshalTaxSummary(taxRate, dbTax.NetAmount, dbTax.TaxAmount)
+		taxes = append(taxes, tax)
+	}
+
 	summary := domain.UnmarshalPriceBreakdownSummary(
-		dbDoc.TotalNetAmount,
-		dbDoc.TotalTaxAmount,
-		dbDoc.TotalGrossAmount,
-		nil,
+		dbDoc.BillingDocument.TotalNetAmount,
+		dbDoc.BillingDocument.TotalTaxAmount,
+		dbDoc.BillingDocument.TotalGrossAmount,
+		taxes,
 	)
 
-	docSeries, err := domain.NewDocumentSeries(dbDoc.SeriesPrefix)
+	docSeries, err := domain.NewDocumentSeries(dbDoc.BillingDocument.SeriesPrefix)
 
-	docNumber, err := domain.UnmarshalDocumentNumber(docSeries, dbDoc.DocumentNumber)
+	docNumber, err := domain.UnmarshalDocumentNumber(docSeries, dbDoc.BillingDocument.DocumentNumber)
 	if err != nil {
 		return nil, fmt.Errorf("error creating document number: %w", err)
 	}
 
+	seller, err := domain.NewLegalEntity(
+		dbDoc.BillingLegalEntitySnapshot.Name,
+		dbDoc.BillingLegalEntitySnapshot.Address,
+		dbDoc.BillingLegalEntitySnapshot.TaxID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating seller legal entity: %w", err)
+	}
+
+	buyer, err := domain.NewLegalEntity(
+		dbDoc.BillingLegalEntitySnapshot_2.Name,
+		dbDoc.BillingLegalEntitySnapshot_2.Address,
+		dbDoc.BillingLegalEntitySnapshot_2.TaxID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error creating buyer legal entity: %w", err)
+	}
+
 	doc := domain.UnmarshalDocument(
-		dbDoc.DocumentUuid,
-		dbDoc.ExternalReference,
+		dbDoc.BillingDocument.DocumentUuid,
+		dbDoc.BillingDocument.ExternalReference,
 		docNumber,
-		dbDoc.DocumentType,
-		dbDoc.IssueDate,
-		dbDoc.Currency,
-		domain.LegalEntity{},
-		domain.LegalEntity{},
+		dbDoc.BillingDocument.DocumentType,
+		dbDoc.BillingDocument.IssueDate,
+		dbDoc.BillingDocument.Currency,
+		seller,
+		buyer,
 		lineItems,
 		summary,
 	)

@@ -112,3 +112,11 @@ func UnmarshalPriceBreakdownSummary(
 		taxes:       taxes,
 	}
 }
+
+func UnmarshalTaxSummary(rate TaxRate, netAmount, taxAmount decimal.Decimal) TaxSummary {
+	return TaxSummary{
+		taxRate:   rate,
+		netAmount: netAmount,
+		taxAmount: taxAmount,
+	}
+}

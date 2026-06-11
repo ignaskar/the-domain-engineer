@@ -65,6 +65,8 @@ type BillingDocument struct {
 	TotalNetAmount    pgtype.Numeric
 	TotalTaxAmount    pgtype.Numeric
 	TotalGrossAmount  pgtype.Numeric
+	SellerUuid        pgtype.UUID
+	BuyerUuid         pgtype.UUID
 }
 
 type BillingDocumentLineItem struct {
@@ -87,4 +89,19 @@ type BillingDocumentSeries struct {
 	LastNumber int32
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
+}
+
+type BillingDocumentTax struct {
+	DocumentUuid pgtype.UUID
+	TaxRate      pgtype.Numeric
+	TaxType      BillingTaxType
+	NetAmount    pgtype.Numeric
+	TaxAmount    pgtype.Numeric
+}
+
+type BillingLegalEntitySnapshot struct {
+	SnapshotUuid pgtype.UUID
+	Name         string
+	Address      []byte
+	TaxID        pgtype.Text
 }

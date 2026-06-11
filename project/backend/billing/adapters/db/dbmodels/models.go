@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"eats/backend/billing/domain"
+	"eats/backend/common"
 	"eats/backend/common/shared"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/shopspring/decimal"
@@ -69,6 +70,8 @@ type BillingDocument struct {
 	TotalNetAmount    decimal.Decimal
 	TotalTaxAmount    decimal.Decimal
 	TotalGrossAmount  decimal.Decimal
+	SellerUuid        common.UUID
+	BuyerUuid         common.UUID
 }
 
 type BillingDocumentLineItem struct {
@@ -91,4 +94,19 @@ type BillingDocumentSeries struct {
 	LastNumber int32
 	CreatedAt  pgtype.Timestamp
 	UpdatedAt  pgtype.Timestamp
+}
+
+type BillingDocumentTax struct {
+	DocumentUuid domain.DocumentUUID
+	TaxRate      decimal.Decimal
+	TaxType      domain.TaxType
+	NetAmount    decimal.Decimal
+	TaxAmount    decimal.Decimal
+}
+
+type BillingLegalEntitySnapshot struct {
+	SnapshotUuid common.UUID
+	Name         string
+	Address      shared.Address
+	TaxID        *shared.TaxID
 }
