@@ -6,6 +6,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	billingdb "eats/backend/billing/adapters/db"
+	"eats/backend/billing/api/http"
+	"eats/backend/billing/app/command"
+	"eats/backend/billing/app/query"
 	"eats/backend/common"
 	"eats/backend/common/module"
 	"eats/backend/common/module/contracts"
@@ -13,6 +17,9 @@ import (
 
 type Module struct {
 	pgxDb *pgxpool.Pool
+
+	commandHandlers *command.Handlers
+	queryHandlers   *query.Handlers
 }
 
 func NewModule(pgxDb *pgxpool.Pool) *Module {
@@ -27,13 +34,22 @@ func (m *Module) Name() module.Name {
 var embedMigrations embed.FS
 
 func (m *Module) Init(ctx context.Context) error {
-	return common.MigrateDatabaseUp(
+	if err := common.MigrateDatabaseUp(
 		ctx,
 		string(m.Name()),
 		m.pgxDb,
 		embedMigrations,
 		"adapters/db/migrations",
-	)
+	); err != nil {
+		return err
+	}
+
+	postgresRepo := billingdb.NewPostgresRepository(m.pgxDb)
+
+	m.commandHandlers = command.NewHandlers(postgresRepo)
+	m.queryHandlers = query.NewHandlers(postgresRepo)
+
+	return nil
 }
 
 func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Contracts) error {
@@ -41,5 +57,5 @@ func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Con
 }
 
 func (m *Module) RegisterHttp(ctx context.Context, e common.EchoRouter) error {
-	return nil
+	return http.Register(ctx, e, m.commandHandlers, m.queryHandlers)
 }
