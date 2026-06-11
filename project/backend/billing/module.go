@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	billingdb "eats/backend/billing/adapters/db"
+	"eats/backend/billing/adapters/printer"
 	"eats/backend/billing/api/http"
 	billingModule "eats/backend/billing/api/module"
 	"eats/backend/billing/app/command"
@@ -16,15 +17,24 @@ import (
 	"eats/backend/common/module/contracts"
 )
 
+type fileStorage interface {
+	StoreFile(ctx context.Context, path string, content []byte) (string, error)
+}
+
 type Module struct {
 	pgxDb *pgxpool.Pool
 
 	commandHandlers *command.Handlers
 	queryHandlers   *query.Handlers
+
+	fileStorage fileStorage
 }
 
-func NewModule(pgxDb *pgxpool.Pool) *Module {
-	return &Module{pgxDb: pgxDb}
+func NewModule(pgxDb *pgxpool.Pool, fileStorage fileStorage) *Module {
+	return &Module{
+		pgxDb:       pgxDb,
+		fileStorage: fileStorage,
+	}
 }
 
 func (m *Module) Name() module.Name {
@@ -45,9 +55,10 @@ func (m *Module) Init(ctx context.Context) error {
 		return err
 	}
 
+	documentPrinter := printer.NewPrinter()
 	postgresRepo := billingdb.NewPostgresRepository(m.pgxDb)
 
-	m.commandHandlers = command.NewHandlers(postgresRepo)
+	m.commandHandlers = command.NewHandlers(postgresRepo, documentPrinter, m.fileStorage)
 	m.queryHandlers = query.NewHandlers(postgresRepo)
 
 	return nil

@@ -279,6 +279,9 @@ type ClientInterface interface {
 
 	// GetDocument request
 	GetDocument(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PrintDocument request
+	PrintDocument(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) CreateReceiptWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -307,6 +310,18 @@ func (c *Client) CreateReceipt(ctx context.Context, body CreateReceiptJSONReques
 
 func (c *Client) GetDocument(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetDocumentRequest(c.Server, documentUuid)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PrintDocument(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPrintDocumentRequest(c.Server, documentUuid)
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +406,40 @@ func NewGetDocumentRequest(server string, documentUuid DocumentUUID) (*http.Requ
 	return req, nil
 }
 
+// NewPrintDocumentRequest generates requests for PrintDocument
+func NewPrintDocumentRequest(server string, documentUuid DocumentUUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "document_uuid", runtime.ParamLocationPath, documentUuid)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/billing/documents/%s/print", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -441,6 +490,9 @@ type ClientWithResponsesInterface interface {
 
 	// GetDocumentWithResponse request
 	GetDocumentWithResponse(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*GetDocumentResponse, error)
+
+	// PrintDocumentWithResponse request
+	PrintDocumentWithResponse(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*PrintDocumentResponse, error)
 }
 
 type CreateReceiptResponse struct {
@@ -495,6 +547,30 @@ func (r GetDocumentResponse) StatusCode() int {
 	return 0
 }
 
+type PrintDocumentResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON400      *BadRequest
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+}
+
+// Status returns HTTPResponse.Status
+func (r PrintDocumentResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PrintDocumentResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 // CreateReceiptWithBodyWithResponse request with arbitrary body returning *CreateReceiptResponse
 func (c *ClientWithResponses) CreateReceiptWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateReceiptResponse, error) {
 	rsp, err := c.CreateReceiptWithBody(ctx, contentType, body, reqEditors...)
@@ -519,6 +595,15 @@ func (c *ClientWithResponses) GetDocumentWithResponse(ctx context.Context, docum
 		return nil, err
 	}
 	return ParseGetDocumentResponse(rsp)
+}
+
+// PrintDocumentWithResponse request returning *PrintDocumentResponse
+func (c *ClientWithResponses) PrintDocumentWithResponse(ctx context.Context, documentUuid DocumentUUID, reqEditors ...RequestEditorFn) (*PrintDocumentResponse, error) {
+	rsp, err := c.PrintDocument(ctx, documentUuid, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePrintDocumentResponse(rsp)
 }
 
 // ParseCreateReceiptResponse parses an HTTP response from a CreateReceiptWithResponse call
@@ -585,6 +670,46 @@ func ParseGetDocumentResponse(rsp *http.Response) (*GetDocumentResponse, error) 
 		}
 		response.JSON200 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePrintDocumentResponse parses an HTTP response from a PrintDocumentWithResponse call
+func ParsePrintDocumentResponse(rsp *http.Response) (*PrintDocumentResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PrintDocumentResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest BadRequest
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
