@@ -7,11 +7,69 @@ RETURNING last_number;
 
 -- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid, external_reference, document_number, series_prefix
+    document_uuid,
+    external_reference,
+    document_number,
+    series_prefix,
+    document_type,
+    issue_date,
+    currency,
+    total_net_amount,
+    total_tax_amount,
+    total_gross_amount
 )
 VALUES (
-    sqlc.arg(document_uuid), sqlc.arg(external_reference), sqlc.arg(document_number), sqlc.arg(series_prefix)
+    sqlc.arg(document_uuid),
+    sqlc.arg(external_reference),
+    sqlc.arg(document_number),
+    sqlc.arg(series_prefix),
+    sqlc.arg(document_type),
+    sqlc.arg(issue_date),
+    sqlc.arg(currency),
+    sqlc.arg(total_net_amount),
+    sqlc.arg(total_tax_amount),
+    sqlc.arg(total_gross_amount)
 );
 
 -- name: GetDocumentByExternalReference :one
 SELECT * FROM billing.documents WHERE external_reference = $1;
+
+-- name: SaveDocumentLineItem :exec
+INSERT INTO billing.document_line_items
+(
+    line_item_uuid,
+    document_uuid,
+    name,
+    quantity,
+    unit_net_amount,
+    unit_tax_amount,
+    unit_gross_amount,
+    net_amount,
+    tax_amount,
+    gross_amount,
+    tax_rate,
+    tax_type
+)
+VALUES
+(
+    sqlc.arg(line_item_uuid),
+    sqlc.arg(document_uuid),
+    sqlc.arg(name),
+    sqlc.arg(quantity),
+    sqlc.arg(unit_net_amount),
+    sqlc.arg(unit_tax_amount),
+    sqlc.arg(unit_gross_amount),
+    sqlc.arg(net_amount),
+    sqlc.arg(tax_amount),
+    sqlc.arg(gross_amount),
+    sqlc.arg(tax_rate),
+    sqlc.arg(tax_type)
+);
+
+-- name: GetDocument :one
+SELECT * FROM billing.documents WHERE document_uuid = $1;
+
+-- name: GetDocumentLineItems :many
+SELECT *
+FROM billing.document_line_items
+WHERE document_uuid = $1;
