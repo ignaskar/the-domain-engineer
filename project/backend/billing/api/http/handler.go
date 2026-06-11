@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-
 	"eats/backend/billing/app/command"
 	"eats/backend/billing/app/query"
 	"eats/backend/billing/domain"
@@ -12,6 +11,43 @@ import (
 type Handler struct {
 	commands *command.Handlers
 	queries  *query.Handlers
+}
+
+func (h Handler) CreateReceipt(ctx context.Context, request CreateReceiptRequestObject) (CreateReceiptResponseObject, error) {
+	documentData, err := newDocumentDetailsFromCreateDocument(CreateDocument{
+		Buyer:     request.Body.Buyer,
+		Currency:  request.Body.Currency,
+		IssueDate: request.Body.IssueDate,
+		LineItems: request.Body.LineItems,
+		Seller:    request.Body.Seller,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := command.IssueReceipt{
+		DocumentData: documentData,
+	}
+	docUUID, err := h.commands.IssueReceipt(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateReceipt201JSONResponse{
+		DocumentUuid: docUUID,
+	}, nil
+}
+
+func (h Handler) GetDocument(ctx context.Context, request GetDocumentRequestObject) (GetDocumentResponseObject, error) {
+	q := query.GetDocumentByUUID{
+		DocumentUUID: request.DocumentUuid,
+	}
+	document, err := h.queries.GetDocumentByUUID(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetDocument200JSONResponse(documentToResponse(document)), nil
 }
 
 func documentToResponse(doc *domain.Document) DocumentResponse {
