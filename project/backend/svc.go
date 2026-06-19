@@ -12,6 +12,7 @@ import (
 	echo "github.com/labstack/echo/v4"
 
 	"eats/backend/billing"
+	"eats/backend/billing/adapters/tax"
 	"eats/backend/common/file"
 	commonHTTP "eats/backend/common/http"
 	"eats/backend/common/log"
@@ -53,11 +54,12 @@ func New(
 	moduleContracts := &contracts.Contracts{}
 
 	fileStorage := file.NewPublicStorage(apiClients)
+	taxProvider := tax.NewStub()
 
 	modules := []module.Module{
 		orders.NewModule(dbPgx, moduleContracts, apiClients),
 		delivery.NewModule(),
-		billing.NewModule(dbPgx, fileStorage),
+		billing.NewModule(dbPgx, fileStorage, taxProvider),
 	}
 
 	for _, module := range modules {

@@ -12,6 +12,7 @@ import (
 	billingModule "eats/backend/billing/api/module"
 	"eats/backend/billing/app/command"
 	"eats/backend/billing/app/query"
+	"eats/backend/billing/domain"
 	"eats/backend/common"
 	"eats/backend/common/module"
 	"eats/backend/common/module/contracts"
@@ -28,12 +29,14 @@ type Module struct {
 	queryHandlers   *query.Handlers
 
 	fileStorage fileStorage
+	taxProvider domain.TaxRateProvider
 }
 
-func NewModule(pgxDb *pgxpool.Pool, fileStorage fileStorage) *Module {
+func NewModule(pgxDb *pgxpool.Pool, fileStorage fileStorage, taxProvider domain.TaxRateProvider) *Module {
 	return &Module{
 		pgxDb:       pgxDb,
 		fileStorage: fileStorage,
+		taxProvider: taxProvider,
 	}
 }
 
@@ -58,7 +61,7 @@ func (m *Module) Init(ctx context.Context) error {
 	documentPrinter := printer.NewPrinter()
 	postgresRepo := billingdb.NewPostgresRepository(m.pgxDb)
 
-	m.commandHandlers = command.NewHandlers(postgresRepo, documentPrinter, m.fileStorage)
+	m.commandHandlers = command.NewHandlers(postgresRepo, documentPrinter, m.fileStorage, m.taxProvider)
 	m.queryHandlers = query.NewHandlers(postgresRepo)
 
 	return nil
