@@ -1,5 +1,7 @@
 package main
 
+import "errors"
+
 type PaymentDetails struct {
 	Amount   int
 	Currency string
@@ -30,4 +32,25 @@ func NewOrderFactory(paymentsClient PaymentsClient) OrderFactory {
 	return OrderFactory{
 		paymentsClient: paymentsClient,
 	}
+}
+
+func (f OrderFactory) NewOrder(nonce string) (*Order, error) {
+	if nonce == "" {
+		return nil, errors.New("empty nonce")
+	}
+
+	d, err := f.paymentsClient.GetPaymentDetails(nonce)
+	if err != nil {
+		return nil, err
+	}
+
+	if d.Amount <= 0 {
+		return nil, errors.New("invalid amount")
+	}
+
+	return &Order{
+		nonce:    nonce,
+		amount:   d.Amount,
+		currency: d.Currency,
+	}, nil
 }
