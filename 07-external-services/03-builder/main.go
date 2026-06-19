@@ -1,5 +1,7 @@
 package main
 
+import "errors"
+
 type Section struct {
 	Title   string
 	Content string
@@ -37,4 +39,21 @@ func (b *ReportBuilder) WithHeader(header string) *ReportBuilder {
 func (b *ReportBuilder) WithFooter(footer string) *ReportBuilder {
 	b.report.footer = footer
 	return b
+}
+
+func (b *ReportBuilder) WithSection(s Section) *ReportBuilder {
+	b.report.sections = append(b.report.sections, s)
+	return b
+}
+
+func (b *ReportBuilder) Build() (*Report, error) {
+	if b.report.title == "" {
+		return nil, errors.New("title cannot be empty")
+	}
+
+	if len(b.report.sections) == 0 {
+		return nil, errors.New("sections cannot be empty")
+	}
+
+	return &b.report, nil
 }
