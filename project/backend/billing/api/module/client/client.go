@@ -15,6 +15,7 @@ type LineItem struct {
 	Name       string
 	UnitAmount shared.LineAmount
 	Quantity   int
+	Type       shared.LineItemType
 }
 
 type IssueReceiptRequest struct {

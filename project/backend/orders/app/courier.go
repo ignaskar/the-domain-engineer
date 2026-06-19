@@ -144,7 +144,7 @@ func newPlatformLegalEntity() (billingClient.LegalEntity, error) {
 		return billingClient.LegalEntity{}, err
 	}
 
-	var platformSeller = billingClient.LegalEntity{
+	platformSeller := billingClient.LegalEntity{
 		Name:    "Eats Platform",
 		Address: addr,
 		TaxID:   &taxID,
@@ -169,16 +169,19 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 			Name:       "Order Items",
 			UnitAmount: shared.NewGrossAmount(order.ItemsSubtotal),
 			Quantity:   1,
+			Type:       shared.LineItemTypeFood,
 		},
 		{
 			Name:       "Delivery",
 			UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
 			Quantity:   1,
+			Type:       shared.LineItemTypeDelivery,
 		},
 		{
 			Name:       "Service Fee",
 			UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
 			Quantity:   1,
+			Type:       shared.LineItemTypeService,
 		},
 	}
 

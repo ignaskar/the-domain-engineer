@@ -90,12 +90,14 @@ func UnmarshalLineItem(
 	name string,
 	breakdown PriceBreakdown,
 	quantity int,
+	lineItemType shared.LineItemType,
 ) LineItem {
 	return LineItem{
-		uuid:      lineItemUUID,
-		name:      name,
-		breakdown: breakdown,
-		quantity:  quantity,
+		uuid:         lineItemUUID,
+		name:         name,
+		breakdown:    breakdown,
+		quantity:     quantity,
+		lineItemType: lineItemType,
 	}
 }
 

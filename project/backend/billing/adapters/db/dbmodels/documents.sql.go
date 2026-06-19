@@ -84,7 +84,7 @@ func (q *Queries) GetDocumentByExternalReference(ctx context.Context, externalRe
 }
 
 const getDocumentLineItems = `-- name: GetDocumentLineItems :many
-SELECT line_item_uuid, document_uuid, name, quantity, unit_net_amount, unit_tax_amount, unit_gross_amount, net_amount, tax_amount, gross_amount, tax_rate, tax_type from billing.document_line_items
+SELECT line_item_uuid, document_uuid, name, quantity, unit_net_amount, unit_tax_amount, unit_gross_amount, net_amount, tax_amount, gross_amount, tax_rate, tax_type, line_item_type from billing.document_line_items
 WHERE document_uuid = $1
 `
 
@@ -110,6 +110,7 @@ func (q *Queries) GetDocumentLineItems(ctx context.Context, documentUuid domain.
 			&i.GrossAmount,
 			&i.TaxRate,
 			&i.TaxType,
+			&i.LineItemType,
 		); err != nil {
 			return nil, err
 		}
@@ -217,7 +218,7 @@ INSERT INTO billing.document_line_items (
     line_item_uuid, document_uuid, name, quantity,
     unit_net_amount, unit_tax_amount, unit_gross_amount,
     net_amount, tax_amount, gross_amount,
-    tax_rate, tax_type
+    tax_rate, tax_type, line_item_type
 ) VALUES (
     $1,
     $2,
@@ -230,7 +231,8 @@ INSERT INTO billing.document_line_items (
     $9,
     $10,
     $11,
-    $12
+    $12,
+    $13
 )
 `
 
@@ -247,6 +249,7 @@ type SaveDocumentLineItemParams struct {
 	GrossAmount     decimal.Decimal
 	TaxRate         decimal.Decimal
 	TaxType         domain.TaxType
+	LineItemType    shared.LineItemType
 }
 
 func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLineItemParams) error {
@@ -263,6 +266,7 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 		arg.GrossAmount,
 		arg.TaxRate,
 		arg.TaxType,
+		arg.LineItemType,
 	)
 	return err
 }

@@ -102,9 +102,10 @@ type NewDocumentData struct {
 }
 
 type NewLineItemData struct {
-	Name       string
-	Quantity   int
-	UnitAmount shared.LineAmount
+	Name         string
+	Quantity     int
+	UnitAmount   shared.LineAmount
+	LineItemType shared.LineItemType
 }
 
 type DocumentUUID struct {
@@ -169,10 +170,11 @@ type LineItemUUID struct {
 }
 
 type LineItem struct {
-	uuid      LineItemUUID
-	name      string
-	breakdown PriceBreakdown
-	quantity  int
+	uuid         LineItemUUID
+	name         string
+	breakdown    PriceBreakdown
+	quantity     int
+	lineItemType shared.LineItemType
 }
 
 func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate) (LineItem, error) {
@@ -186,6 +188,10 @@ func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate
 
 	if data.UnitAmount.Amount().IsNegative() {
 		return LineItem{}, errors.New("unit amount can't be negative")
+	}
+
+	if data.LineItemType.IsZero() {
+		return LineItem{}, errors.New("lineItemType can't be empty")
 	}
 
 	var priceBreakdown PriceBreakdown
@@ -202,10 +208,11 @@ func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate
 	}
 
 	return LineItem{
-		uuid:      LineItemUUID{common.NewUUIDv7()},
-		name:      data.Name,
-		breakdown: priceBreakdown,
-		quantity:  data.Quantity,
+		uuid:         LineItemUUID{common.NewUUIDv7()},
+		name:         data.Name,
+		breakdown:    priceBreakdown,
+		quantity:     data.Quantity,
+		lineItemType: data.LineItemType,
 	}, nil
 }
 
@@ -223,4 +230,8 @@ func (l LineItem) Quantity() int {
 
 func (l LineItem) PriceBreakdown() PriceBreakdown {
 	return l.breakdown
+}
+
+func (l LineItem) LineItemType() shared.LineItemType {
+	return l.lineItemType
 }

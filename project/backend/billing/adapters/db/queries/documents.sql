@@ -21,7 +21,7 @@ INSERT INTO billing.document_line_items (
     line_item_uuid, document_uuid, name, quantity,
     unit_net_amount, unit_tax_amount, unit_gross_amount,
     net_amount, tax_amount, gross_amount,
-    tax_rate, tax_type
+    tax_rate, tax_type, line_item_type
 ) VALUES (
     sqlc.arg(line_item_uuid),
     sqlc.arg(document_uuid),
@@ -34,7 +34,8 @@ INSERT INTO billing.document_line_items (
     sqlc.arg(tax_amount),
     sqlc.arg(gross_amount),
     sqlc.arg(tax_rate),
-    sqlc.arg(tax_type)
+    sqlc.arg(tax_type),
+    sqlc.arg(line_item_type)
 );
 
 -- name: SaveDocumentTax :exec

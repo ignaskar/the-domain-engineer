@@ -113,6 +113,7 @@ func (r *PostgresRepository) CreateDocument(
 				GrossAmount:     lineItem.PriceBreakdown().GrossAmount(),
 				TaxRate:         lineItem.PriceBreakdown().TaxRate().Rate(),
 				TaxType:         lineItem.PriceBreakdown().TaxRate().TaxType(),
+				LineItemType:    lineItem.LineItemType(),
 			})
 			if err != nil {
 				return fmt.Errorf("error saving document line item: %w", err)
@@ -197,6 +198,7 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 			dbLineItem.Name,
 			breakdown,
 			int(dbLineItem.Quantity),
+			dbLineItem.LineItemType,
 		))
 	}
 
