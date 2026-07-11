@@ -13,6 +13,7 @@ import (
 
 	"eats/backend/billing"
 	"eats/backend/billing/adapters/tax"
+	billing_domain "eats/backend/billing/domain"
 	"eats/backend/common/file"
 	commonHTTP "eats/backend/common/http"
 	"eats/backend/common/log"
@@ -20,7 +21,21 @@ import (
 	"eats/backend/common/module/contracts"
 	"eats/backend/delivery"
 	"eats/backend/orders"
+	orders_app "eats/backend/orders/app"
 )
+
+// FileStorage stores files and returns their public URL.
+type FileStorage interface {
+	StoreFile(ctx context.Context, path string, content []byte) (string, error)
+}
+
+// ExternalServices provides external API service dependencies.
+// For production, use real HTTP clients. For tests, inject stubs.
+type ExternalServices struct {
+	Payments    orders_app.PaymentsService
+	Tax         billing_domain.TaxRateProvider
+	FileStorage FileStorage
+}
 
 type Svc struct {
 	echoRouter *echo.Echo
