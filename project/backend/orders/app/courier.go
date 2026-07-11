@@ -167,21 +167,21 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 	lineItems := []billingClient.LineItem{
 		{
 			Name:       "Order Items",
+			Type:       shared.LineItemTypeFood,
 			UnitAmount: shared.NewGrossAmount(order.ItemsSubtotal),
 			Quantity:   1,
-			Type:       shared.LineItemTypeFood,
 		},
 		{
 			Name:       "Delivery",
+			Type:       shared.LineItemTypeDelivery,
 			UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
 			Quantity:   1,
-			Type:       shared.LineItemTypeDelivery,
 		},
 		{
 			Name:       "Service Fee",
+			Type:       shared.LineItemTypeService,
 			UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
 			Quantity:   1,
-			Type:       shared.LineItemTypeService,
 		},
 	}
 

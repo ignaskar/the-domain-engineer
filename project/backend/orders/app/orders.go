@@ -435,30 +435,6 @@ func (s *Service) AcceptOrder(
 	)
 }
 
-func (s *Service) MarkAsPrepared(
-	ctx context.Context,
-	restaurantUUID RestaurantUUID,
-	orderUUID OrderUUID,
-) error {
-	return s.orderRepository.UpdateOrder(
-		ctx,
-		orderUUID,
-		func(ctx context.Context, order Order) (Order, error) {
-			if err := checkRestaurantMatch(order.RestaurantUUID, restaurantUUID); err != nil {
-				return Order{}, err
-			}
-
-			if order.RestaurantPreparedAt != nil {
-				log.FromContext(ctx).With("order_uuid", orderUUID).Warn("Order already marked as ready")
-				return order, nil
-			}
-			order.RestaurantPreparedAt = common.ToPtr(time.Now())
-
-			return order, nil
-		},
-	)
-}
-
 func checkRestaurantMatch(orderRestaurant RestaurantUUID, restaurantUUID RestaurantUUID) error {
 	if orderRestaurant.Equals(restaurantUUID.UUID) {
 		return nil

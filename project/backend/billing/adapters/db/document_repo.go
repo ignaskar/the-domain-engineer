@@ -104,6 +104,7 @@ func (r *PostgresRepository) CreateDocument(
 				LineItemUuid:    lineItem.UUID(),
 				DocumentUuid:    doc.UUID(),
 				Name:            lineItem.Name(),
+				LineItemType:    lineItem.LineItemType(),
 				Quantity:        int32(lineItem.Quantity()),
 				UnitNetAmount:   lineItem.PriceBreakdown().UnitNetAmount(),
 				UnitTaxAmount:   lineItem.PriceBreakdown().UnitTaxAmount(),
@@ -113,7 +114,6 @@ func (r *PostgresRepository) CreateDocument(
 				GrossAmount:     lineItem.PriceBreakdown().GrossAmount(),
 				TaxRate:         lineItem.PriceBreakdown().TaxRate().Rate(),
 				TaxType:         lineItem.PriceBreakdown().TaxRate().TaxType(),
-				LineItemType:    lineItem.LineItemType(),
 			})
 			if err != nil {
 				return fmt.Errorf("error saving document line item: %w", err)
@@ -196,9 +196,9 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		lineItems = append(lineItems, domain.UnmarshalLineItem(
 			dbLineItem.LineItemUuid,
 			dbLineItem.Name,
+			dbLineItem.LineItemType,
 			breakdown,
 			int(dbLineItem.Quantity),
-			dbLineItem.LineItemType,
 		))
 	}
 

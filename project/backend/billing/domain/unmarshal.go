@@ -88,16 +88,16 @@ func UnmarshalPriceBreakdown(
 func UnmarshalLineItem(
 	lineItemUUID LineItemUUID,
 	name string,
+	lineItemType shared.LineItemType,
 	breakdown PriceBreakdown,
 	quantity int,
-	lineItemType shared.LineItemType,
 ) LineItem {
 	return LineItem{
 		uuid:         lineItemUUID,
 		name:         name,
+		lineItemType: lineItemType,
 		breakdown:    breakdown,
 		quantity:     quantity,
-		lineItemType: lineItemType,
 	}
 }
 

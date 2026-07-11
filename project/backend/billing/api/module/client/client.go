@@ -13,9 +13,9 @@ type Billing interface {
 
 type LineItem struct {
 	Name       string
+	Type       shared.LineItemType
 	UnitAmount shared.LineAmount
 	Quantity   int
-	Type       shared.LineItemType
 }
 
 type IssueReceiptRequest struct {

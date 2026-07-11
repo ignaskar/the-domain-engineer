@@ -41,9 +41,9 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 	for _, lineItem := range req.LineItems {
 		domainLineItem := domain.NewLineItemData{
 			Name:         lineItem.Name,
+			LineItemType: lineItem.Type,
 			Quantity:     lineItem.Quantity,
 			UnitAmount:   lineItem.UnitAmount,
-			LineItemType: lineItem.Type,
 		}
 		lineItems = append(lineItems, domainLineItem)
 	}

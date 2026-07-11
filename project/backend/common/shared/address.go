@@ -102,7 +102,7 @@ func (a *Address) Scan(src any) error {
 		return fmt.Errorf("invalid type for %T, expected string", src)
 	}
 
-	err := a.UnmarshalJSON([]byte(text))
+	err := json.Unmarshal([]byte(text), a)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling %T from json: %w", a, err)
 	}
@@ -111,7 +111,7 @@ func (a *Address) Scan(src any) error {
 }
 
 func (a Address) Value() (driver.Value, error) {
-	data, err := a.MarshalJSON()
+	data, err := json.Marshal(a)
 	if err != nil {
 		return nil, fmt.Errorf("error marshalling %T to json: %w", a, err)
 	}

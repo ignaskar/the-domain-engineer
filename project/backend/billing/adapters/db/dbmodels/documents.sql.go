@@ -215,10 +215,10 @@ func (q *Queries) SaveDocument(ctx context.Context, arg SaveDocumentParams) erro
 
 const saveDocumentLineItem = `-- name: SaveDocumentLineItem :exec
 INSERT INTO billing.document_line_items (
-    line_item_uuid, document_uuid, name, quantity,
+    line_item_uuid, document_uuid, name, quantity, line_item_type,
     unit_net_amount, unit_tax_amount, unit_gross_amount,
     net_amount, tax_amount, gross_amount,
-    tax_rate, tax_type, line_item_type
+    tax_rate, tax_type
 ) VALUES (
     $1,
     $2,
@@ -241,6 +241,7 @@ type SaveDocumentLineItemParams struct {
 	DocumentUuid    domain.DocumentUUID
 	Name            string
 	Quantity        int32
+	LineItemType    shared.LineItemType
 	UnitNetAmount   decimal.Decimal
 	UnitTaxAmount   decimal.Decimal
 	UnitGrossAmount decimal.Decimal
@@ -249,7 +250,6 @@ type SaveDocumentLineItemParams struct {
 	GrossAmount     decimal.Decimal
 	TaxRate         decimal.Decimal
 	TaxType         domain.TaxType
-	LineItemType    shared.LineItemType
 }
 
 func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLineItemParams) error {
@@ -258,6 +258,7 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 		arg.DocumentUuid,
 		arg.Name,
 		arg.Quantity,
+		arg.LineItemType,
 		arg.UnitNetAmount,
 		arg.UnitTaxAmount,
 		arg.UnitGrossAmount,
@@ -266,7 +267,6 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 		arg.GrossAmount,
 		arg.TaxRate,
 		arg.TaxType,
-		arg.LineItemType,
 	)
 	return err
 }

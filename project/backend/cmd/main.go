@@ -2,18 +2,11 @@ package main
 
 import (
 	"context"
-	"eats/backend/billing/adapters/tax"
-	"eats/backend/common/file"
-	"eats/backend/orders/adapters/payments"
-	"fmt"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
-	"github.com/ThreeDotsLabs/the-domain-engineer/clients"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eats/backend"
@@ -36,28 +29,10 @@ func main() {
 		panic(err)
 	}
 
-	apiClients, err := clients.NewClientsWithHttpClient(
-		os.Getenv("GATEWAY_ADDR"),
-		func(ctx context.Context, req *http.Request) error {
-			req.Header.Set("Correlation-ID", log.CorrelationIDFromContext(ctx))
-			return nil
-		},
-		&http.Client{Timeout: 10 * time.Second},
-	)
-	if err != nil {
-		panic(fmt.Errorf("creating api clients failed: %w", err))
-	}
-
-	externalServices := backend.ExternalServices{
-		Payments:    payments.NewClient(apiClients),
-		Tax:         tax.NewStub(),
-		FileStorage: file.NewPublicStorage(apiClients),
-	}
-
 	svc, err := backend.New(
 		ctx,
 		dbPgx,
-		externalServices,
+		os.Getenv("GATEWAY_ADDR"),
 	)
 	if err != nil {
 		panic(err)

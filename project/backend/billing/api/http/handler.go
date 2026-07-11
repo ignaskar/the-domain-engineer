@@ -158,9 +158,9 @@ func newDocumentDetailsFromCreateDocument(cd CreateDocument) (domain.NewDocument
 
 		lineItem := domain.NewLineItemData{
 			Name:         httpLineItem.Name,
+			LineItemType: httpLineItem.LineItemType,
 			Quantity:     httpLineItem.Quantity,
 			UnitAmount:   unitAmount,
-			LineItemType: httpLineItem.LineItemType,
 		}
 
 		lineItems = append(lineItems, lineItem)
