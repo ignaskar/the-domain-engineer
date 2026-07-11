@@ -760,12 +760,11 @@ func TestComponent_PlaceOrderWithArchivedItemFromQuote(t *testing.T) {
 	}
 	updateRestaurantMenu(ctx, t, clients, restaurant.UUID, updatedRestaurant)
 
-	_, cardNumber := createBankAccountWithBalance(ctx, t, clients, decimal.NewFromInt(1000), common.NewUUIDv7().String())
-	createBankAccount(ctx, t, clients, restaurant.UUID.String())
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+	createBankAccount(ctx, t, restaurant.UUID.String())
 	nonce := preauthPayment(
 		ctx,
 		t,
-		clients,
 		cardNumber,
 		decimal.NewFromInt(100),
 		"USD",
