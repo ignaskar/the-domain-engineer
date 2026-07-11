@@ -1,11 +1,26 @@
 package domain
 
 import (
+	"context"
+	"time"
+
 	"github.com/shopspring/decimal"
 
 	"eats/backend/common"
 	"eats/backend/common/shared"
 )
+
+type TaxRateRequest struct {
+	BuyerCountryCode  shared.CountryCode
+	BuyerTaxID        *shared.TaxID
+	SellerCountryCode shared.CountryCode
+	LineItemType      shared.LineItemType
+	TransactionDate   time.Time
+}
+
+type TaxRateProvider interface {
+	GetTaxRate(ctx context.Context, input TaxRateRequest) (TaxRate, error)
+}
 
 type TaxType struct {
 	common.Enum[TaxTypeValues]

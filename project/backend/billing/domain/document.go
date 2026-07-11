@@ -6,44 +6,30 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/shopspring/decimal"
-
 	"eats/backend/common"
 	"eats/backend/common/shared"
 )
 
-type DocumentType struct {
-	common.Enum[DocumentTypeValues]
+type DocumentFactory struct {
+	taxRateProvider TaxRateProvider
 }
 
-type DocumentTypeValues string
+func NewDocumentFactory(taxRateProvider TaxRateProvider) *DocumentFactory {
+	if taxRateProvider == nil {
+		panic("taxRateProvider must not be nil")
+	}
 
-func (DocumentTypeValues) Values() []string {
-	return []string{"receipt"}
+	return &DocumentFactory{taxRateProvider}
 }
 
-var DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
-
-type DocumentRepository interface {
-	DocumentByUUID(ctx context.Context, docUUID DocumentUUID) (*Document, error)
-	CreateDocument(
-		ctx context.Context,
-		series DocumentSeries,
-		createFunc func(documentNumber DocumentNumber) (*Document, error),
-	) (DocumentUUID, error)
-	UpdateFileUrl(ctx context.Context, docUUID DocumentUUID, fileUrl string) error
-}
-
-// defaultTaxRate is the hardcoded 10% sales tax for our single-country MVP.
-var defaultTaxRate = TaxRate{
-	rate:    decimal.NewFromFloat(0.10),
-	taxType: TaxTypeSalesTax,
-}
-
-func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, error) {
+func (f *DocumentFactory) NewReceiptBuilder(ctx context.Context, data NewDocumentData) (*DocumentBuilder, error) {
 	if data.Buyer.TaxID() != nil {
 		return nil, errors.New("receipts cannot be issued to buyers with a tax ID")
 	}
+	return f.newDocumentBuilder(ctx, DocumentTypeReceipt, data)
+}
+
+func (f *DocumentFactory) newDocumentBuilder(ctx context.Context, docType DocumentType, data NewDocumentData) (*DocumentBuilder, error) {
 	if data.Buyer.IsZero() {
 		return nil, errors.New("buyer can't be empty")
 	}
@@ -69,7 +55,14 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 
 	lineItems := make([]LineItem, 0, len(data.LineItems))
 	for _, lid := range data.LineItems {
-		lineItem, err := newLineItem(lid, data.Currency, defaultTaxRate)
+		lineItem, err := f.newLineItem(
+			ctx,
+			lid,
+			data.Buyer.Address().CountryCode(),
+			data.Buyer.TaxID(),
+			data.Seller.Address().CountryCode(),
+			data.Currency,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create line item for document: %w", err)
 		}
@@ -78,18 +71,130 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 
 	summary := summarizeLineItems(lineItems)
 
-	return &Document{
-		uuid:              DocumentUUID{common.NewUUIDv7()},
+	return &DocumentBuilder{
 		externalReference: data.ExternalReference,
 		documentType:      DocumentTypeReceipt,
 		issueDate:         data.IssueDate,
-		documentNumber:    docNumber,
 		currency:          data.Currency,
 		seller:            data.Seller,
 		buyer:             data.Buyer,
 		lineItems:         lineItems,
 		summary:           summary,
 	}, nil
+}
+
+func (f *DocumentFactory) newLineItem(
+	ctx context.Context,
+	data NewLineItemData,
+	buyerCountryCode shared.CountryCode,
+	buyerTaxID *shared.TaxID,
+	sellerCountryCode shared.CountryCode,
+	currency shared.Currency,
+) (LineItem, error) {
+	if data.Name == "" {
+		return LineItem{}, errors.New("name can't be empty")
+	}
+
+	if data.Quantity < 1 {
+		return LineItem{}, errors.New("quantity must be positive")
+	}
+
+	if data.UnitAmount.Amount().IsNegative() {
+		return LineItem{}, errors.New("unit amount can't be negative")
+	}
+
+	if data.LineItemType.IsZero() {
+		return LineItem{}, errors.New("lineItemType can't be empty")
+	}
+
+	if buyerCountryCode.IsZero() {
+		return LineItem{}, errors.New("buyerCountryCode can't be empty")
+	}
+
+	if sellerCountryCode.IsZero() {
+		return LineItem{}, errors.New("sellerCountryCode can't be empty")
+	}
+
+	var priceBreakdown PriceBreakdown
+	var err error
+
+	taxRateRequest := TaxRateRequest{
+		BuyerCountryCode:  buyerCountryCode,
+		BuyerTaxID:        buyerTaxID,
+		SellerCountryCode: sellerCountryCode,
+		LineItemType:      data.LineItemType,
+		TransactionDate:   time.Now(),
+	}
+	taxRate, err := f.taxRateProvider.GetTaxRate(ctx, taxRateRequest)
+	if err != nil {
+		return LineItem{}, fmt.Errorf("failed to get tax rate: %w", err)
+	}
+
+	if data.UnitAmount.IsGross() {
+		priceBreakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	} else {
+		priceBreakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	}
+
+	if err != nil {
+		return LineItem{}, fmt.Errorf("failed to create price breakdown: %w", err)
+	}
+
+	return LineItem{
+		uuid:         LineItemUUID{common.NewUUIDv7()},
+		name:         data.Name,
+		breakdown:    priceBreakdown,
+		quantity:     data.Quantity,
+		lineItemType: data.LineItemType,
+	}, nil
+}
+
+type DocumentBuilder struct {
+	externalReference *string
+	documentType      DocumentType
+	issueDate         time.Time
+	currency          shared.Currency
+	seller            LegalEntity
+	buyer             LegalEntity
+	lineItems         []LineItem
+	summary           PriceBreakdownSummary
+}
+
+func (b *DocumentBuilder) Build(docNumber DocumentNumber) (*Document, error) {
+	return &Document{
+		uuid:              DocumentUUID{common.NewUUIDv7()},
+		externalReference: b.externalReference,
+		documentType:      b.documentType,
+		issueDate:         b.issueDate,
+		currency:          b.currency,
+		documentNumber:    docNumber,
+		seller:            b.seller,
+		buyer:             b.buyer,
+		lineItems:         b.lineItems,
+		summary:           b.summary,
+	}, nil
+}
+
+type DocumentType struct {
+	common.Enum[DocumentTypeValues]
+}
+
+type DocumentTypeValues string
+
+func (DocumentTypeValues) Values() []string {
+	return []string{"receipt"}
+}
+
+var DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
+
+type DocumentRepository interface {
+	DocumentByUUID(ctx context.Context, docUUID DocumentUUID) (*Document, error)
+	CreateDocument(
+		ctx context.Context,
+		series DocumentSeries,
+		createFunc func(documentNumber DocumentNumber) (*Document, error),
+	) (DocumentUUID, error)
+	UpdateFileUrl(ctx context.Context, docUUID DocumentUUID, fileUrl string) error
 }
 
 type NewDocumentData struct {
@@ -175,45 +280,6 @@ type LineItem struct {
 	breakdown    PriceBreakdown
 	quantity     int
 	lineItemType shared.LineItemType
-}
-
-func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate) (LineItem, error) {
-	if data.Name == "" {
-		return LineItem{}, errors.New("name can't be empty")
-	}
-
-	if data.Quantity < 1 {
-		return LineItem{}, errors.New("quantity must be positive")
-	}
-
-	if data.UnitAmount.Amount().IsNegative() {
-		return LineItem{}, errors.New("unit amount can't be negative")
-	}
-
-	if data.LineItemType.IsZero() {
-		return LineItem{}, errors.New("lineItemType can't be empty")
-	}
-
-	var priceBreakdown PriceBreakdown
-	var err error
-
-	if data.UnitAmount.IsGross() {
-		priceBreakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
-	} else {
-		priceBreakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
-	}
-
-	if err != nil {
-		return LineItem{}, fmt.Errorf("failed to create price breakdown: %w", err)
-	}
-
-	return LineItem{
-		uuid:         LineItemUUID{common.NewUUIDv7()},
-		name:         data.Name,
-		breakdown:    priceBreakdown,
-		quantity:     data.Quantity,
-		lineItemType: data.LineItemType,
-	}, nil
 }
 
 func (l LineItem) UUID() LineItemUUID {
