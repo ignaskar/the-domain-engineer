@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"eats/backend/settlements/adapters/db/dbmodels"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,15 +26,43 @@ func NewLegalEntityRepository(db *pgxpool.Pool) *LegalEntityRepository {
 }
 
 func (r *LegalEntityRepository) LegalEntityByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (models.LegalEntity, error) {
-	// TODO: implement
-	// 1. Use dbmodels.New(r.db) to get a Queries handle.
-	// 2. Call queries.LegalEntityByUUID and translate the row into models.LegalEntity.
-	return models.LegalEntity{}, fmt.Errorf("not implemented")
+	queries := dbmodels.New(r.db)
+
+	le, err := queries.LegalEntityByUUID(ctx, uuid)
+	if err != nil {
+		return models.LegalEntity{}, fmt.Errorf("error getting legal entity by uuid: %w", err)
+	}
+
+	return legalEntityFromDB(le), nil
 }
 
 func (r *LegalEntityRepository) SavePlatformEntity(ctx context.Context, platform models.LegalEntity) error {
-	// TODO: implement
-	// Save the platform legal entity using queries.SaveLegalEntity.
-	// Set legal_entity_type to models.LegalEntityPlatform.
-	return fmt.Errorf("not implemented")
+	queries := dbmodels.New(r.db)
+
+	err := queries.SaveLegalEntity(ctx, dbmodels.SaveLegalEntityParams{
+		LegalEntityUuid:   platform.UUID,
+		LegalEntityType:   models.LegalEntityPlatform,
+		BusinessName:      platform.BusinessName,
+		Address:           platform.Address,
+		TaxID:             platform.TaxID,
+		BankAccountNumber: platform.BankAccountNumber.String(),
+		Currency:          platform.Currency,
+	})
+	if err != nil {
+		return fmt.Errorf("error saving legal entity: %w", err)
+	}
+
+	return nil
+}
+
+func legalEntityFromDB(l dbmodels.SettlementsLegalEntity) models.LegalEntity {
+	return models.LegalEntity{
+		UUID:              l.LegalEntityUuid,
+		Type:              l.LegalEntityType,
+		BusinessName:      l.BusinessName,
+		TaxID:             l.TaxID,
+		Address:           l.Address,
+		BankAccountNumber: domain.UnmarshalIBAN(l.BankAccountNumber),
+		Currency:          l.Currency,
+	}
 }
