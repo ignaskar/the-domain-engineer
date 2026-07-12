@@ -19,6 +19,7 @@ import (
 	"eats/backend/delivery"
 	"eats/backend/orders"
 	orders_app "eats/backend/orders/app"
+	"eats/backend/settlements"
 )
 
 // FileStorage stores files and returns their public URL.
@@ -57,6 +58,7 @@ func New(
 		orders.NewModule(dbPgx, moduleContracts, services.Payments),
 		delivery.NewModule(),
 		billing.NewModule(dbPgx, services.FileStorage, services.Tax),
+		settlements.NewModule(dbPgx, moduleContracts),
 	}
 
 	for _, module := range modules {
