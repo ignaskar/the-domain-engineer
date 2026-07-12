@@ -5,66 +5,58 @@ import (
 	"unicode"
 )
 
-// TODO: design the IBAN value object.
-//
-// You'll need to add:
-//
-// - IBAN struct that wraps the raw string. The raw string should not be
-//   exported. Callers must go through the constructor.
-// - NewIBAN(string) (IBAN, error) constructor that validates the input.
-//   Validation rules:
-//     - empty string returns an error
-//     - length below 15 returns an error (Norway has the shortest IBANs)
-//     - length above 34 returns an error (max IBAN length per ISO 13616)
-//     - first 2 characters must be letters (the country code)
-//     - the rest must be alphanumeric
-// - IsZero() bool method that reports whether the IBAN is the zero value.
-// - String() string method that returns the raw IBAN.
-// - UnmarshalIBAN(string) IBAN constructor used by the persistence layer
-//   when loading an already-validated IBAN from the database (no validation,
-//   no error). Look at how other value objects in the project expose this.
-
+// IBAN represents an International Bank Account Number.
 type IBAN struct {
 	iban string
 }
 
+const (
+	minIBANLength = 15 // Norway has the shortest IBANs
+	maxIBANLength = 34 // Maximum IBAN length per ISO 13616
+)
+
 func NewIBAN(iban string) (IBAN, error) {
 	if iban == "" {
-		return IBAN{}, errors.New("IBAN empty")
+		return IBAN{}, errors.New("iban is empty")
 	}
 
-	if len(iban) < 15 {
-		return IBAN{}, errors.New("IBAN too short")
+	if len(iban) < minIBANLength {
+		return IBAN{}, errors.New("iban is too short")
 	}
 
-	if len(iban) > 34 {
-		return IBAN{}, errors.New("IBAN too long")
+	if len(iban) > maxIBANLength {
+		return IBAN{}, errors.New("iban is too long")
 	}
 
-	for i, s := range iban {
-		if i == 0 || i == 1 {
-			if !unicode.IsLetter(s) {
-				return IBAN{}, errors.New("first two IBAN characters must be letters")
-			}
-			continue
-		}
-
-		if !unicode.IsDigit(s) && !unicode.IsLetter(s) {
-			return IBAN{}, errors.New("remaining IBAN characters must be alphanumeric")
+	// First two characters must be letters (country code)
+	for _, r := range iban[:2] {
+		if !unicode.IsLetter(r) {
+			return IBAN{}, errors.New("iban country code is invalid")
 		}
 	}
 
-	return IBAN{iban: iban}, nil
+	// Rest must be alphanumeric
+	for _, r := range iban[2:] {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return IBAN{}, errors.New("iban contains invalid characters")
+		}
+	}
+
+	return IBAN{
+		iban: iban,
+	}, nil
 }
 
-func (i IBAN) IsZero() bool {
-	return i.iban == ""
+func (b IBAN) IsZero() bool {
+	return b.iban == ""
 }
 
-func (i IBAN) String() string {
-	return i.iban
+func (b IBAN) String() string {
+	return b.iban
 }
 
 func UnmarshalIBAN(iban string) IBAN {
-	return IBAN{iban: iban}
+	return IBAN{
+		iban: iban,
+	}
 }
