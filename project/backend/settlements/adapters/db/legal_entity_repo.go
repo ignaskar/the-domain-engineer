@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"eats/backend/common"
+
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eats/backend/settlements/adapters/db/dbmodels"
@@ -68,11 +71,22 @@ func (r *LegalEntityRepository) SavePlatformEntity(ctx context.Context, platform
 }
 
 func (r *LegalEntityRepository) PartnerByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (models.Partner, error) {
-	// TODO: implement
-	// 1. Query legal entity by UUID.
-	// 2. Query platform UUID via the partner_platform_mappings table.
-	// 3. Return a Partner combining both.
-	return models.Partner{}, fmt.Errorf("not implemented")
+	queries := dbmodels.New(r.db)
+
+	le, err := queries.LegalEntityByUUID(ctx, uuid)
+	if err != nil {
+		return models.Partner{}, fmt.Errorf("error getting legal entity by uuid: %w", err)
+	}
+
+	pid, err := queries.PlatformByPartnerUUID(ctx, uuid)
+	if err != nil {
+		return models.Partner{}, fmt.Errorf("error getting partner by uuid: %w", err)
+	}
+
+	return models.Partner{
+		LegalEntity:        legalEntityFromDB(le),
+		PlatformEntityUUID: pid,
+	}, nil
 }
 
 func (r *LegalEntityRepository) SavePartner(ctx context.Context, partner models.Partner) error {
@@ -81,5 +95,39 @@ func (r *LegalEntityRepository) SavePartner(ctx context.Context, partner models.
 	// 1. Save the partner's legal entity.
 	// 2. Verify the platform entity exists and is of type "platform".
 	// 3. Save the partner-platform mapping.
-	return fmt.Errorf("not implemented")
+	return common.UpdateInTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(tx)
+
+		err := queries.SaveLegalEntity(ctx, dbmodels.SaveLegalEntityParams{
+			LegalEntityUuid:   partner.LegalEntity.UUID,
+			LegalEntityType:   models.LegalEntityPartner,
+			BusinessName:      partner.LegalEntity.BusinessName,
+			TaxID:             partner.LegalEntity.TaxID,
+			Address:           partner.LegalEntity.Address,
+			BankAccountNumber: partner.LegalEntity.BankAccountNumber.String(),
+			Currency:          partner.LegalEntity.Currency,
+		})
+		if err != nil {
+			return fmt.Errorf("error saving legal entity: %w", err)
+		}
+
+		le, err := queries.LegalEntityByUUID(ctx, partner.PlatformEntityUUID.LegalEntityUUID)
+		if err != nil {
+			return fmt.Errorf("error getting legal entity by uuid: %w", err)
+		}
+
+		if le.LegalEntityType != models.LegalEntityPlatform {
+			return fmt.Errorf("legal entity %s is not a platform", partner.PlatformEntityUUID)
+		}
+
+		err = queries.SavePartnerPlatformMapping(ctx, dbmodels.SavePartnerPlatformMappingParams{
+			PartnerUuid:        partner.LegalEntity.UUID,
+			PlatformEntityUuid: partner.PlatformEntityUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("error saving partner platform mapping: %w", err)
+		}
+
+		return nil
+	})
 }

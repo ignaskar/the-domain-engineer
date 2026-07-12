@@ -17,6 +17,16 @@ ON CONFLICT (legal_entity_uuid) DO UPDATE SET
                           currency = EXCLUDED.currency,
                           updated_at = NOW();
 
+-- name: SavePartnerPlatformMapping :exec
+INSERT INTO settlements.partner_platform_mappings (
+    partner_uuid,
+    platform_entity_uuid
+) VALUES (sqlc.arg(partner_uuid), sqlc.arg(platform_entity_uuid))
+ON CONFLICT DO NOTHING;
+
+-- name: PlatformByPartnerUUID :one
+SELECT platform_entity_uuid FROM settlements.partner_platform_mappings WHERE partner_uuid = $1;
+
 -- TODO: add two queries below.
 --
 -- 1. SavePartnerPlatformMapping :exec
