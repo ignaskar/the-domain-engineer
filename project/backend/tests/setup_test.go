@@ -19,6 +19,7 @@ import (
 	"eats/backend/common/log"
 	"eats/backend/orders/adapters/payments"
 	ordersclient "eats/backend/orders/api/http/client"
+	settlementclient "eats/backend/settlements/api/http/client"
 )
 
 type testStubs struct {
@@ -29,8 +30,9 @@ type testStubs struct {
 var stubs testStubs
 
 type testClients struct {
-	Orders  *ordersclient.ClientWithResponses
-	Billing *billingclient.ClientWithResponses
+	Orders      *ordersclient.ClientWithResponses
+	Billing     *billingclient.ClientWithResponses
+	Settlements *settlementclient.ClientWithResponses
 }
 
 func newTestClients(t *testing.T) testClients {
@@ -66,9 +68,18 @@ func newTestClients(t *testing.T) testClients {
 		t.Fatalf("creating billing client: %v", err)
 	}
 
+	settlements, err := settlementclient.NewClientWithResponses("http://localhost:9090/",
+		settlementclient.WithHTTPClient(httpClient),
+		settlementclient.WithRequestEditorFn(editorFn),
+	)
+	if err != nil {
+		t.Fatalf("creating settlements client: %v", err)
+	}
+
 	return testClients{
-		Orders:  orders,
-		Billing: billing,
+		Orders:      orders,
+		Billing:     billing,
+		Settlements: settlements,
 	}
 }
 

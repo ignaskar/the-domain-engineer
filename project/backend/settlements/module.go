@@ -60,7 +60,7 @@ func (m *Module) Init(ctx context.Context) error {
 }
 
 func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Contracts) error {
-	contracts.Settlements = settlementsModule.New()
+	contracts.Settlements = settlementsModule.New(m.commandHandlers, m.legalEntityRepository)
 	return nil
 }
 
