@@ -164,26 +164,39 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 		return err
 	}
 
-	lineItems := []billingClient.LineItem{
-		{
-			Name:       "Order Items",
-			Type:       shared.LineItemTypeFood,
-			UnitAmount: shared.NewGrossAmount(order.ItemsSubtotal),
-			Quantity:   1,
-		},
-		{
-			Name:       "Delivery",
-			Type:       shared.LineItemTypeDelivery,
-			UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
-			Quantity:   1,
-		},
-		{
-			Name:       "Service Fee",
-			Type:       shared.LineItemTypeService,
-			UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
-			Quantity:   1,
-		},
+	orderItems, err := s.orderRepository.OrderItemsByOrderID(ctx, orderUUID)
+	if err != nil {
+		return err
 	}
+
+	var lineItems []billingClient.LineItem
+	for _, orderItem := range orderItems {
+		lineItemType, err := lineItemTypeFromCategory(orderItem.Category)
+		if err != nil {
+			return err
+		}
+
+		lineItems = append(lineItems, billingClient.LineItem{
+			Name:       orderItem.Name,
+			Type:       lineItemType,
+			UnitAmount: shared.NewGrossAmount(orderItem.GrossPrice),
+			Quantity:   orderItem.Quantity,
+		})
+	}
+
+	lineItems = append(lineItems, billingClient.LineItem{
+		Name:       "Delivery",
+		Type:       shared.LineItemTypeDelivery,
+		UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
+		Quantity:   1,
+	})
+
+	lineItems = append(lineItems, billingClient.LineItem{
+		Name:       "Service Fee",
+		Type:       shared.LineItemTypeService,
+		UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
+		Quantity:   1,
+	})
 
 	orderUUIDStr := orderUUID.String()
 
@@ -263,4 +276,15 @@ func checkCustomerMatch(orderCustomer CustomerUUID, customerUUID CustomerUUID) e
 		orderCustomer,
 		customerUUID,
 	))
+}
+
+func lineItemTypeFromCategory(category ItemCategory) (shared.LineItemType, error) {
+	switch category {
+	case ItemCategoryBeverage:
+		return shared.LineItemTypeBeverage, nil
+	case ItemCategoryFood:
+		return shared.LineItemTypeFood, nil
+	default:
+		return shared.LineItemType{}, fmt.Errorf("unsupported item category: %s", category)
+	}
 }
