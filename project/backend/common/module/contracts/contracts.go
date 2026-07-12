@@ -10,12 +10,14 @@ import (
 	billingModule "eats/backend/billing/api/module/client"
 	deliveryModule "eats/backend/delivery/api/module/client"
 	ordersModule "eats/backend/orders/api/module/client"
+	settlementsModule "eats/backend/settlements/api/module/client"
 )
 
 type Contracts struct {
 	ordersModule.Orders
 	deliveryModule.Delivery
 	billingModule.Billing
+	settlementsModule.Settlements
 }
 
 func (c *Contracts) Verify() error {
@@ -29,6 +31,9 @@ func (c *Contracts) Verify() error {
 	}
 	if c.Billing == nil {
 		err = errors.Join(err, errors.New("billing module contract is empty"))
+	}
+	if c.Settlements == nil {
+		err = errors.Join(err, errors.New("settlements module contract is empty"))
 	}
 
 	return err
