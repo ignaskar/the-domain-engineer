@@ -48,6 +48,7 @@ func (c Quote) ExpirationTime() time.Time {
 type QuoteMenuItem struct {
 	MenuItemUUID RestaurantMenuItemUUID
 
+	Category   ItemCategory
 	GrossPrice decimal.Decimal
 	Quantity   int
 }
@@ -168,6 +169,7 @@ type OrderRepository interface {
 	) error
 
 	OrderByID(ctx context.Context, orderUUID OrderUUID) (Order, error)
+	OrderItemsByOrderID(ctx context.Context, orderUUID OrderUUID) ([]OrderItem, error)
 }
 
 type CreateQuote struct {
@@ -180,6 +182,13 @@ type CreateQuote struct {
 type CreateQuoteItem struct {
 	MenuItemUUID RestaurantMenuItemUUID
 	Quantity     int
+}
+
+type OrderItem struct {
+	Name       string
+	Category   ItemCategory
+	GrossPrice decimal.Decimal
+	Quantity   int
 }
 
 type CreateQuoteItems []CreateQuoteItem

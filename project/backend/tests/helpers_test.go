@@ -48,6 +48,7 @@ func assertRestaurantMenuPublished(ctx context.Context, t *testing.T, clients te
 		cmp.Diff(
 			restaurant.MenuItems,
 			resp.JSON200.Items,
+			cmpopts.EquateComparable(app.ItemCategory{}),
 			cmpopts.SortSlices(func(a, b ordersclient.MenuItem) bool {
 				return a.Uuid.String() < b.Uuid.String()
 			}),
@@ -72,11 +73,19 @@ func onboardRestaurant(
 ) testRestaurant {
 	t.Helper()
 
+	var category app.ItemCategory
+	if rand.Intn(2) == 0 {
+		category = app.ItemCategoryFood
+	} else {
+		category = app.ItemCategoryBeverage
+	}
+
 	var menuItems []ordersclient.MenuItem
 	for i := 0; i < 5; i++ {
 		menuItems = append(menuItems, ordersclient.MenuItem{
 			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
 			Name:       gofakeit.Lunch(),
+			Category:   category,
 			GrossPrice: randomPrice(),
 			Ordering:   rand.Float32(),
 		})
@@ -857,11 +866,19 @@ func onboardRestaurantWithName(
 ) (app.RestaurantUUID, ordersclient.OnboardRestaurant) {
 	t.Helper()
 
+	var category app.ItemCategory
+	if rand.Intn(2) == 0 {
+		category = app.ItemCategoryFood
+	} else {
+		category = app.ItemCategoryBeverage
+	}
+
 	var menuItems []ordersclient.MenuItem
 	for i := 0; i < 5; i++ {
 		menuItems = append(menuItems, ordersclient.MenuItem{
 			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
 			Name:       gofakeit.Lunch(),
+			Category:   category,
 			GrossPrice: randomPrice(),
 			Ordering:   rand.Float32(),
 		})
@@ -905,6 +922,7 @@ func onboardRestaurantWithItems(
 		menuItems = append(menuItems, ordersclient.MenuItem{
 			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
 			Name:       itemName,
+			Category:   app.ItemCategoryFood,
 			GrossPrice: decimal.NewFromFloat(10.00 + float64(i)),
 			Ordering:   float32(i + 1),
 		})
