@@ -84,6 +84,62 @@ func TestLegalEntityRepository_LegalEntityByUUID_NotFound(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestLegalEntityRepository_SavePartner_AtomicSaveAndPartnerByUUID(t *testing.T) {
+	ctx := context.Background()
+	repo := db.NewLegalEntityRepository(testutils.NewDB(t))
+
+	platform := newPlatformLegalEntity(t)
+	require.NoError(t, repo.SavePlatformEntity(ctx, platform))
+
+	partner := newPartner(t, models.PlatformEntityUUID{LegalEntityUUID: platform.UUID})
+
+	err := repo.SavePartner(ctx, partner)
+	require.NoError(t, err)
+
+	loaded, err := repo.PartnerByUUID(ctx, partner.LegalEntity.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, partner.LegalEntity.UUID, loaded.LegalEntity.UUID)
+	assert.Equal(t, models.LegalEntityPartner, loaded.LegalEntity.Type)
+	assert.Equal(t, partner.PlatformEntityUUID, loaded.PlatformEntityUUID)
+}
+
+func TestLegalEntityRepository_SavePartner_RejectsNonPlatformReference(t *testing.T) {
+	ctx := context.Background()
+	repo := db.NewLegalEntityRepository(testutils.NewDB(t))
+
+	// Reference is a partner-type entity, not a platform.
+	platform := newPlatformLegalEntity(t)
+	require.NoError(t, repo.SavePlatformEntity(ctx, platform))
+
+	wrongRef := newPartner(t, models.PlatformEntityUUID{LegalEntityUUID: platform.UUID})
+	require.NoError(t, repo.SavePartner(ctx, wrongRef))
+
+	// Try to onboard another partner referencing the partner UUID instead of the platform UUID.
+	bogus := newPartner(t, models.PlatformEntityUUID{LegalEntityUUID: wrongRef.LegalEntity.UUID})
+
+	err := repo.SavePartner(ctx, bogus)
+	require.Error(t, err)
+
+	// Tx must roll back: bogus partner's legal entity should not be persisted.
+	_, err = repo.LegalEntityByUUID(ctx, bogus.LegalEntity.UUID)
+	require.Error(t, err)
+}
+
+func TestLegalEntityRepository_SavePartner_RejectsMissingPlatform(t *testing.T) {
+	ctx := context.Background()
+	repo := db.NewLegalEntityRepository(testutils.NewDB(t))
+
+	missingPlatform := models.PlatformEntityUUID{LegalEntityUUID: domain.LegalEntityUUID{UUID: common.NewUUIDv7()}}
+	partner := newPartner(t, missingPlatform)
+
+	err := repo.SavePartner(ctx, partner)
+	require.Error(t, err)
+
+	// Tx must roll back: partner legal entity should not be persisted.
+	_, err = repo.LegalEntityByUUID(ctx, partner.LegalEntity.UUID)
+	require.Error(t, err)
+}
+
 func newPlatformLegalEntity(t *testing.T) models.LegalEntity {
 	t.Helper()
 
@@ -108,4 +164,30 @@ func newPlatformLegalEntity(t *testing.T) models.LegalEntity {
 	require.NoError(t, err)
 
 	return entity
+}
+
+func newPartner(t *testing.T, platformUUID models.PlatformEntityUUID) models.Partner {
+	t.Helper()
+
+	taxID, err := shared.NewTaxID("PL9876543210")
+	require.NoError(t, err)
+
+	address, err := shared.NewAddress("Side 5", "", "00-002", "Warsaw", shared.MustNewCountryCode("PL"))
+	require.NoError(t, err)
+
+	iban, err := domain.NewIBAN("DE89370400440532013111")
+	require.NoError(t, err)
+
+	legalEntity, err := models.NewLegalEntity(
+		domain.LegalEntityUUID{UUID: common.NewUUIDv7()},
+		models.LegalEntityPartner,
+		"Mama's Pizzeria",
+		taxID,
+		address,
+		iban,
+		shared.MustNewCurrency("EUR"),
+	)
+	require.NoError(t, err)
+
+	return models.NewPartner(legalEntity, platformUUID)
 }

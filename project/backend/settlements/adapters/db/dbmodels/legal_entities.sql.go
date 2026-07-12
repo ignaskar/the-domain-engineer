@@ -14,17 +14,9 @@ import (
 )
 
 const legalEntityByUUID = `-- name: LegalEntityByUUID :one
-
-SELECT legal_entity_uuid, legal_entity_type, business_name, address, tax_id, bank_account_number, currency, created_at, updated_at FROM settlements.legal_entities
-WHERE legal_entity_uuid = $1
+SELECT legal_entity_uuid, legal_entity_type, business_name, address, tax_id, bank_account_number, currency, created_at, updated_at FROM settlements.legal_entities WHERE legal_entity_uuid = $1
 `
 
-// TODO: write two queries.
-//
-// 1. LegalEntityByUUID :one  -- SELECT a single row from settlements.legal_entities by legal_entity_uuid.
-// 2. SaveLegalEntity :exec   -- INSERT into settlements.legal_entities, ON CONFLICT update the mutable fields.
-//
-// After writing the queries, run `task generate` to regenerate dbmodels.
 func (q *Queries) LegalEntityByUUID(ctx context.Context, legalEntityUuid domain.LegalEntityUUID) (SettlementsLegalEntity, error) {
 	row := q.db.QueryRow(ctx, legalEntityByUUID, legalEntityUuid)
 	var i SettlementsLegalEntity
@@ -42,38 +34,42 @@ func (q *Queries) LegalEntityByUUID(ctx context.Context, legalEntityUuid domain.
 	return i, err
 }
 
+const platformByPartnerUUID = `-- name: PlatformByPartnerUUID :one
+SELECT platform_entity_uuid
+FROM settlements.partner_platform_mappings
+WHERE partner_uuid = $1
+`
+
+func (q *Queries) PlatformByPartnerUUID(ctx context.Context, partnerUuid domain.LegalEntityUUID) (models.PlatformEntityUUID, error) {
+	row := q.db.QueryRow(ctx, platformByPartnerUUID, partnerUuid)
+	var platform_entity_uuid models.PlatformEntityUUID
+	err := row.Scan(&platform_entity_uuid)
+	return platform_entity_uuid, err
+}
+
 const saveLegalEntity = `-- name: SaveLegalEntity :exec
-INSERT INTO settlements.legal_entities (
-    legal_entity_uuid,
-    legal_entity_type,
-    business_name,
-    address,
-    tax_id,
-    bank_account_number,
-    currency
-) VALUES (
-    $1,
-    $2,
-    $3,
-    $4,
-    $5,
-    $6,
-    $7
-) ON CONFLICT (legal_entity_uuid) DO UPDATE SET
-    business_name = EXCLUDED.business_name,
-    tax_id = EXCLUDED.tax_id,
-    address = EXCLUDED.address,
-    bank_account_number = EXCLUDED.bank_account_number,
-    currency = EXCLUDED.currency,
-    updated_at = NOW()
+INSERT INTO settlements.legal_entities (legal_entity_uuid, legal_entity_type, business_name, tax_id, address, bank_account_number, currency)
+VALUES (
+           $1, $2,
+           $3, $4,
+           $5,
+           $6, $7
+       )
+ON CONFLICT (legal_entity_uuid) DO UPDATE SET
+                          business_name = EXCLUDED.business_name,
+                          tax_id = EXCLUDED.tax_id,
+                          address = EXCLUDED.address,
+                          bank_account_number = EXCLUDED.bank_account_number,
+                          currency = EXCLUDED.currency,
+                          updated_at = NOW()
 `
 
 type SaveLegalEntityParams struct {
 	LegalEntityUuid   domain.LegalEntityUUID
 	LegalEntityType   models.LegalEntityType
 	BusinessName      string
-	Address           shared.Address
 	TaxID             shared.TaxID
+	Address           shared.Address
 	BankAccountNumber string
 	Currency          shared.Currency
 }
@@ -83,10 +79,26 @@ func (q *Queries) SaveLegalEntity(ctx context.Context, arg SaveLegalEntityParams
 		arg.LegalEntityUuid,
 		arg.LegalEntityType,
 		arg.BusinessName,
-		arg.Address,
 		arg.TaxID,
+		arg.Address,
 		arg.BankAccountNumber,
 		arg.Currency,
 	)
+	return err
+}
+
+const savePartnerPlatformMapping = `-- name: SavePartnerPlatformMapping :exec
+INSERT INTO settlements.partner_platform_mappings (partner_uuid, platform_entity_uuid)
+VALUES ($1, $2)
+ON CONFLICT (partner_uuid) DO NOTHING
+`
+
+type SavePartnerPlatformMappingParams struct {
+	PartnerUuid        domain.LegalEntityUUID
+	PlatformEntityUuid models.PlatformEntityUUID
+}
+
+func (q *Queries) SavePartnerPlatformMapping(ctx context.Context, arg SavePartnerPlatformMappingParams) error {
+	_, err := q.db.Exec(ctx, savePartnerPlatformMapping, arg.PartnerUuid, arg.PlatformEntityUuid)
 	return err
 }
