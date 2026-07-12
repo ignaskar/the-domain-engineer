@@ -1,0 +1,6 @@
+-- TODO: write two queries.
+--
+-- 1. LegalEntityByUUID :one  -- SELECT a single row from settlements.legal_entities by legal_entity_uuid.
+-- 2. SaveLegalEntity :exec   -- INSERT into settlements.legal_entities, ON CONFLICT update the mutable fields.
+--
+-- After writing the queries, run `task generate` to regenerate dbmodels.
