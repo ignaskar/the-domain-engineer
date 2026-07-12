@@ -6,23 +6,30 @@ import (
 
 	"eats/backend/billing/api/module/client"
 	"eats/backend/billing/app/command"
+	"eats/backend/billing/app/query"
 	"eats/backend/billing/domain"
 	"eats/backend/common/shared"
 )
 
 type Billing struct {
 	commandHandlers *command.Handlers
+	queryHandlers   *query.Handlers
 }
 
 func New(
 	commandHandlers *command.Handlers,
+	queryHandlers *query.Handlers,
 ) *Billing {
 	if commandHandlers == nil {
 		panic("commandHandlers cannot be nil")
 	}
+	if queryHandlers == nil {
+		panic("queryHandlers cannot be nil")
+	}
 
 	return &Billing{
 		commandHandlers: commandHandlers,
+		queryHandlers:   queryHandlers,
 	}
 }
 
@@ -63,6 +70,10 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 	}
 
 	return nil
+}
+
+func (b *Billing) CalculateTaxes(ctx context.Context, req client.CalculateTaxesRequest) (client.CalculateTaxesResponse, error) {
+	return b.queryHandlers.CalculateTaxes(ctx, req)
 }
 
 func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntity, error) {

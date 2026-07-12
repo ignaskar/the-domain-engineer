@@ -62,13 +62,13 @@ func (m *Module) Init(ctx context.Context) error {
 	postgresRepo := billingdb.NewPostgresRepository(m.pgxDb)
 
 	m.commandHandlers = command.NewHandlers(postgresRepo, documentPrinter, m.fileStorage, m.taxProvider)
-	m.queryHandlers = query.NewHandlers(postgresRepo)
+	m.queryHandlers = query.NewHandlers(postgresRepo, m.taxProvider)
 
 	return nil
 }
 
 func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Contracts) error {
-	contracts.Billing = billingModule.New(m.commandHandlers)
+	contracts.Billing = billingModule.New(m.commandHandlers, m.queryHandlers)
 	return nil
 }
 
