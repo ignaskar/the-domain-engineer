@@ -50,7 +50,7 @@ func main() {
 
 	services := backend.ExternalServices{
 		Payments:    payments.NewClient(apiClients),
-		Tax:         tax.NewStub(),
+		Tax:         tax.NewClient(apiClients),
 		FileStorage: file.NewPublicStorage(apiClients),
 	}
 	svc, err := backend.New(
