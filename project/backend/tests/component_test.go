@@ -39,14 +39,17 @@ func TestComponent_CriticalFlow(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
 
-	courier := registerCourierInCity(ctx, t, clients, country, restaurant.Data.Address.City)
+	courier := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
 
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
-	orderUUID := placeOrder(ctx, t, clients, customerUUID, restaurant.UUID, restaurant.Data, country)
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+
+	orderUUID := placeOrder(ctx, t, clients, customerUUID, restaurant.UUID, restaurant.Data, country, cardNumber)
 
 	assertOrderVisibleToRestaurant(ctx, t, clients, restaurant.UUID, orderUUID)
 
@@ -234,10 +237,11 @@ func TestComponent_RegisterCourier(t *testing.T) {
 	ctx := t.Context()
 
 	country := testutils.GenerateRandomCountry()
-	city := testutils.GenerateRandomAddress(country).City()
+	city := testutils.GenerateRandomOpenapiAddress(country).City
 
 	// Register a courier
-	courier := registerCourierInCity(ctx, t, clients, country, city)
+	platform := createPlatformEntity(ctx, t, clients)
+	courier := registerCourierInCity(ctx, t, clients, platform.UUID, country, city)
 	require.NotEmpty(t, courier.UUID)
 }
 
@@ -286,10 +290,12 @@ func TestComponent_CourierDeliveryFlow(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
 
-	courier := registerCourierInCity(ctx, t, clients, country, restaurant.Data.Address.City)
+	courier := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
+
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
 	// Create quote and place order
@@ -302,7 +308,8 @@ func TestComponent_CourierDeliveryFlow(t *testing.T) {
 	deliveryAddress := testutils.GenerateOpenapiAddressInCity(country, restaurant.Data.Address.City)
 	quote := createQuote(ctx, t, clients, customerUUID, restaurant.UUID, orderItems, deliveryAddress)
 
-	order := placeOrderFromQuote(ctx, t, clients, customerUUID, restaurant.UUID, quote)
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
 	require.NotEmpty(t, order.OrderUuid)
 	assertOrderMatchesQuote(t, order, quote)
 
@@ -320,6 +327,12 @@ func TestComponent_CourierDeliveryFlow(t *testing.T) {
 
 	// Courier reports delivery
 	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	t.Run("report_delivery_idempotent", func(t *testing.T) {
+		courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+		assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+	})
 }
 
 func TestComponent_CourierCityFiltering(t *testing.T) {
@@ -329,15 +342,18 @@ func TestComponent_CourierCityFiltering(t *testing.T) {
 	ctx := t.Context()
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
-	courierInSameCity := registerCourierInCity(ctx, t, clients, country, restaurant.Data.Address.City)
+	courierInSameCity := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
 
 	differentCity := restaurant.Data.Address.City + "_Different"
-	courierInDifferentCity := registerCourierInCity(ctx, t, clients, country, differentCity)
+	courierInDifferentCity := registerCourierInCity(ctx, t, clients, platform.UUID, country, differentCity)
 
-	orderUUID := placeOrder(ctx, t, clients, customerUUID, restaurant.UUID, restaurant.Data, country)
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+
+	orderUUID := placeOrder(ctx, t, clients, customerUUID, restaurant.UUID, restaurant.Data, country, cardNumber)
 
 	restaurantAcceptOrder(ctx, t, clients, restaurant.UUID, orderUUID)
 
@@ -426,11 +442,12 @@ func TestComponent_WrongRestaurantCannotManageOrder(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
 
 	// Onboard a second restaurant (the "wrong" one)
-	wrongRestaurant := onboardRestaurant(ctx, t, clients, country)
+	wrongRestaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
@@ -443,7 +460,9 @@ func TestComponent_WrongRestaurantCannotManageOrder(t *testing.T) {
 	}
 	deliveryAddress := testutils.GenerateOpenapiAddressInCity(country, restaurant.Data.Address.City)
 	quote := createQuote(ctx, t, clients, customerUUID, restaurant.UUID, orderItems, deliveryAddress)
-	order := placeOrderFromQuote(ctx, t, clients, customerUUID, restaurant.UUID, quote)
+
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
 
 	t.Run("wrong_restaurant_cannot_accept_order", func(t *testing.T) {
 		resp, err := clients.Orders.RestaurantAcceptOrderWithResponse(
@@ -487,11 +506,12 @@ func TestComponent_SecondCourierCannotAcceptSameOrder(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
 
-	courierA := registerCourierInCity(ctx, t, clients, country, restaurant.Data.Address.City)
-	courierB := registerCourierInCity(ctx, t, clients, country, restaurant.Data.Address.City)
+	courierA := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
+	courierB := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
 	// Create quote and place order
@@ -503,7 +523,9 @@ func TestComponent_SecondCourierCannotAcceptSameOrder(t *testing.T) {
 	}
 	deliveryAddress := testutils.GenerateOpenapiAddressInCity(country, restaurant.Data.Address.City)
 	quote := createQuote(ctx, t, clients, customerUUID, restaurant.UUID, orderItems, deliveryAddress)
-	order := placeOrderFromQuote(ctx, t, clients, customerUUID, restaurant.UUID, quote)
+
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
 
 	// Restaurant accepts order
 	restaurantAcceptOrder(ctx, t, clients, restaurant.UUID, order.OrderUuid)
@@ -536,9 +558,10 @@ func TestComponent_ListRestaurants(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant1 := onboardRestaurant(ctx, t, clients, country)
-	restaurant2 := onboardRestaurant(ctx, t, clients, country)
-	restaurant3 := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant1 := onboardRestaurant(ctx, t, clients, platform.UUID, country)
+	restaurant2 := onboardRestaurant(ctx, t, clients, platform.UUID, country)
+	restaurant3 := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 
 	customerUUID := registerCustomer(ctx, t, clients, country)
 
@@ -601,7 +624,8 @@ func TestComponent_MenuItemArchival(t *testing.T) {
 	country := testutils.GenerateRandomCountry()
 
 	// Onboard restaurant with 5 menu items
-	originalRestaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	originalRestaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 
 	// Verify original menu has all items
 	require.GreaterOrEqual(t, len(originalRestaurant.Data.MenuItems), 3, "Need at least 3 menu items for this test")
@@ -648,7 +672,8 @@ func TestComponent_PlaceOrder(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
 
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
@@ -664,7 +689,8 @@ func TestComponent_PlaceOrder(t *testing.T) {
 	quote := createQuote(ctx, t, clients, customerUUID, restaurant.UUID, orderItems, deliveryAddress)
 
 	// Place order
-	order := placeOrderFromQuote(ctx, t, clients, customerUUID, restaurant.UUID, quote)
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
 	require.NotEmpty(t, order.OrderUuid)
 	assertOrderMatchesQuote(t, order, quote)
 }
@@ -678,11 +704,13 @@ func TestComponent_CreateQuoteOutOfDeliveryZone(t *testing.T) {
 	country := testutils.GenerateRandomCountry()
 
 	// Onboard restaurant in one city
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	customerUUID := registerCustomer(ctx, t, clients, country)
 
-	// Ensure the delivery city is different from restaurant city
+	// Try to create quote with delivery address in a different city
 	deliveryAddress := testutils.GenerateRandomOpenapiAddress(country)
+	// Ensure the delivery city is different from restaurant city
 	for deliveryAddress.City == restaurant.Data.Address.City {
 		deliveryAddress = testutils.GenerateRandomOpenapiAddress(country)
 	}
@@ -733,7 +761,8 @@ func TestComponent_PlaceOrderWithArchivedItemFromQuote(t *testing.T) {
 	country := testutils.GenerateRandomCountry()
 
 	// Onboard restaurant with menu items
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	require.GreaterOrEqual(t, len(restaurant.Data.MenuItems), 3, "Need at least 3 menu items for this test")
 
 	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
@@ -762,7 +791,7 @@ func TestComponent_PlaceOrderWithArchivedItemFromQuote(t *testing.T) {
 	updateRestaurantMenu(ctx, t, clients, restaurant.UUID, updatedRestaurant)
 
 	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
-	createBankAccount(ctx, t, restaurant.UUID.String())
+
 	nonce := preauthPayment(
 		ctx,
 		t,
@@ -805,6 +834,151 @@ func TestComponent_PlaceOrderWithArchivedItemFromQuote(t *testing.T) {
 	assertJsonReprEqual(t, expectedErrors, resp.JSON410.Details)
 }
 
+func TestComponent_AmountsRegression(t *testing.T) {
+	t.Parallel()
+	clients := newTestClients(t)
+
+	ctx := t.Context()
+
+	// Create restaurant with fixed prices for regression testing
+	menuItems := []ordersclient.MenuItem{
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Classic Burger",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("12.50"),
+			Ordering:   0.1,
+		},
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Caesar Salad",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("8.75"),
+			Ordering:   0.2,
+		},
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Margherita Pizza",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("15.00"),
+			Ordering:   0.3,
+		},
+	}
+
+	country := shared.MustNewCountryCode("US")
+
+	restaurant := ordersclient.OnboardRestaurant{
+		Name:        "Test Restaurant",
+		Description: "A test restaurant for regression testing",
+		Address:     testutils.GenerateRandomOpenapiAddress(country),
+		MenuItems:   menuItems,
+		Currency:    shared.MustNewCurrency("USD"),
+	}
+
+	restaurantUUID := app.RestaurantUUID{common.NewUUIDv7()}
+	onboardRestaurantWithData(ctx, t, clients, restaurantUUID, restaurant)
+
+	platform := createPlatformEntity(ctx, t, clients)
+
+	// Onboard partner with US address for consistent tax calculation
+	_ = onboardPartnerForRestaurant(ctx, t, clients, platform.UUID, restaurantUUID, "Test Restaurant Inc.")
+
+	assertRestaurantMenuPublished(ctx, t, clients, restaurantUUID, restaurant)
+
+	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Address.City)
+	courier := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Address.City)
+
+	// Place order with specific items: 2x Classic Burger + 1x Margherita Pizza
+	orderItems := []ordersclient.OrderItem{
+		{MenuItemUuid: menuItems[0].Uuid, Quantity: 2}, // Classic Burger
+		{MenuItemUuid: menuItems[2].Uuid, Quantity: 1}, // Margherita Pizza
+	}
+
+	quote := createQuote(
+		ctx,
+		t,
+		clients,
+		customerUUID,
+		restaurantUUID,
+		orderItems,
+		testutils.GenerateOpenapiAddressInCity(country, restaurant.Address.City),
+	)
+
+	// just to be sure 3d place is always 0
+	const places = 3
+
+	expectedItemsSubtotalGross := decimal.RequireFromString("40")
+	expectedServiceFeeGross := decimal.RequireFromString("2.40")
+	expectedDeliveryFeeGross := decimal.RequireFromString("10.00")
+
+	expectedTotalGross := decimal.RequireFromString("52.40")
+	expectedTotalTax := decimal.RequireFromString("9.80")
+
+	// sanity check
+	require.Equal(
+		t,
+		expectedItemsSubtotalGross.Add(expectedServiceFeeGross).Add(expectedDeliveryFeeGross).StringFixed(places),
+		quote.TotalGross.StringFixed(places),
+	)
+
+	assert.Equal(
+		t,
+		expectedItemsSubtotalGross.StringFixed(places),
+		quote.ItemsSubtotalGross.StringFixed(places),
+		"items subtotal should match expected value",
+	)
+	assert.Equal(
+		t,
+		expectedServiceFeeGross.StringFixed(places),
+		quote.ServiceFeeGross.StringFixed(places),
+		"service fee should match expected value",
+	)
+	assert.Equal(
+		t,
+		expectedDeliveryFeeGross.StringFixed(places),
+		quote.DeliveryFeeGross.StringFixed(places),
+		"delivery fee should match expected value",
+	)
+	assert.Equal(
+		t,
+		expectedTotalGross.StringFixed(places),
+		quote.TotalGross.StringFixed(places),
+		"total gross should match expected value",
+	)
+	assert.Equal(
+		t,
+		expectedTotalTax.StringFixed(places),
+		quote.TotalTax.StringFixed(places),
+		"total gross should match expected value",
+	)
+
+	_, cardNumber := createBankAccountWithBalance(ctx, t, expectedTotalGross, common.NewUUIDv7().String())
+
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
+
+	assertOrderMatchesQuote(t, order, quote)
+
+	assertOrderVisibleToRestaurant(ctx, t, clients, restaurantUUID, order.OrderUuid)
+
+	restaurantAcceptOrder(ctx, t, clients, restaurantUUID, order.OrderUuid)
+
+	assertOrderVisibleToCourier(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	courierAcceptDelivery(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	restaurantMarkOrderReady(ctx, t, clients, restaurantUUID, order.OrderUuid)
+
+	assertOrderReadyForCourier(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	courierReportPickup(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	assertPickupReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+}
+
 func TestComponent_CreateQuoteValidationErrors(t *testing.T) {
 	t.Parallel()
 	clients := newTestClients(t)
@@ -813,7 +987,8 @@ func TestComponent_CreateQuoteValidationErrors(t *testing.T) {
 
 	country := testutils.GenerateRandomCountry()
 
-	restaurant := onboardRestaurant(ctx, t, clients, country)
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
 	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
 
 	t.Run("multiple_validation_errors_with_details", func(t *testing.T) {
@@ -900,6 +1075,115 @@ func TestComponent_CreateQuoteValidationErrors(t *testing.T) {
 		assert.Equal(t, "empty-order", errorResponse.Details[0].ErrorSlug)
 		assert.Contains(t, errorResponse.Details[0].Message, "at least one menu position")
 	})
+}
+
+// TestComponent_JapaneseYenNoDecimals verifies that Japanese Yen amounts
+// are handled correctly without decimal places.
+func TestComponent_JapaneseYenNoDecimals(t *testing.T) {
+	t.Parallel()
+	clients := newTestClients(t)
+
+	ctx := t.Context()
+
+	// Create menu items with whole number JPY prices (no decimals)
+	menuItems := []ordersclient.MenuItem{
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Ramen",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("1200"), // 1,200
+			Ordering:   0.1,
+		},
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Gyoza",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("600"), // 600
+			Ordering:   0.2,
+		},
+		{
+			Uuid:       app.RestaurantMenuItemUUID{common.NewUUIDv7()},
+			Name:       "Matcha Ice Cream",
+			Category:   app.ItemCategoryFood,
+			GrossPrice: decimal.RequireFromString("450"), // 450
+			Ordering:   0.3,
+		},
+	}
+
+	country := shared.MustNewCountryCode("JP")
+	jpyCurrency := shared.MustNewCurrency("JPY")
+
+	restaurant := ordersclient.OnboardRestaurant{
+		Name:        "Tokyo Ramen House",
+		Description: "Authentic Japanese ramen",
+		Address:     testutils.GenerateRandomOpenapiAddress(country),
+		MenuItems:   menuItems,
+		Currency:    jpyCurrency,
+	}
+
+	restaurantUUID := app.RestaurantUUID{common.NewUUIDv7()}
+	onboardRestaurantWithData(ctx, t, clients, restaurantUUID, restaurant)
+
+	platform := createPlatformEntityWithCurrency(ctx, t, clients, jpyCurrency)
+
+	_ = onboardPartnerForRestaurantWithCurrency(
+		ctx, t, clients, platform.UUID, restaurantUUID, "Tokyo Ramen Inc.", jpyCurrency,
+	)
+
+	assertRestaurantMenuPublished(ctx, t, clients, restaurantUUID, restaurant)
+
+	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Address.City)
+	courier := registerCourierInCityWithCurrency(ctx, t, clients, platform.UUID, country, restaurant.Address.City, jpyCurrency)
+
+	// Place order: 2x Ramen + 1x Gyoza = 3,000
+	orderItems := []ordersclient.OrderItem{
+		{MenuItemUuid: menuItems[0].Uuid, Quantity: 2}, // 2x Ramen = 2,400
+		{MenuItemUuid: menuItems[1].Uuid, Quantity: 1}, // 1x Gyoza = 600
+	}
+
+	quote := createQuote(
+		ctx,
+		t,
+		clients,
+		customerUUID,
+		restaurantUUID,
+		orderItems,
+		testutils.GenerateOpenapiAddressInCity(country, restaurant.Address.City),
+	)
+
+	// Verify JPY amounts have no decimal places
+	assert.True(t, quote.ItemsSubtotalGross.Equal(quote.ItemsSubtotalGross.Truncate(0)),
+		"JPY items subtotal should have no decimal places")
+	assert.True(t, quote.TotalGross.Equal(quote.TotalGross.Truncate(0)),
+		"JPY total should have no decimal places")
+	assert.True(t, quote.DeliveryFeeGross.Equal(quote.DeliveryFeeGross.Truncate(0)),
+		"JPY delivery fee should have no decimal places")
+	assert.True(t, quote.ServiceFeeGross.Equal(quote.ServiceFeeGross.Truncate(0)),
+		"JPY service fee should have no decimal places")
+
+	// Expected items subtotal: 2x1200 + 1x600 = 3,000
+	expectedItemsSubtotal := decimal.RequireFromString("3000")
+	assert.Equal(t, expectedItemsSubtotal.String(), quote.ItemsSubtotalGross.String(),
+		"items subtotal should be 3,000")
+
+	_, cardNumber := createBankAccountWithBalance(ctx, t, quote.TotalGross, common.NewUUIDv7().String())
+
+	order := placeOrderFromQuote(ctx, t, clients, customerUUID, quote, cardNumber)
+
+	assertOrderMatchesQuote(t, order, quote)
+
+	// Complete the order flow
+	assertOrderVisibleToRestaurant(ctx, t, clients, restaurantUUID, order.OrderUuid)
+	restaurantAcceptOrder(ctx, t, clients, restaurantUUID, order.OrderUuid)
+	assertOrderVisibleToCourier(ctx, t, clients, courier.UUID, order.OrderUuid)
+	courierAcceptDelivery(ctx, t, clients, courier.UUID, order.OrderUuid)
+	restaurantMarkOrderReady(ctx, t, clients, restaurantUUID, order.OrderUuid)
+	assertOrderReadyForCourier(ctx, t, clients, courier.UUID, order.OrderUuid)
+	courierReportPickup(ctx, t, clients, courier.UUID, order.OrderUuid)
+	assertPickupReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
+	assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
 }
 
 func TestComponent_OnboardingValidation(t *testing.T) {

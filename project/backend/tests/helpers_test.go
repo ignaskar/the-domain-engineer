@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ import (
 	"eats/backend/common/testutils"
 	ordersclient "eats/backend/orders/api/http/client"
 	"eats/backend/orders/app"
+	http2 "eats/backend/settlements/api/http"
+	settlementclient "eats/backend/settlements/api/http/client"
+	"eats/backend/settlements/app/models"
+	"eats/backend/settlements/domain"
 )
 
 var orderCmpOpts = []cmp.Option{
@@ -60,15 +65,109 @@ func assertRestaurantMenuPublished(ctx context.Context, t *testing.T, clients te
 	require.Equal(t, resp.JSON200.Currency, restaurant.Currency)
 }
 
+type testPlatformEntity struct {
+	UUID        models.PlatformEntityUUID
+	BankAccount string
+}
+
+func createPlatformEntity(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+) testPlatformEntity {
+	t.Helper()
+
+	// Pre-generate the platform entity UUID so we can link the bank account to it
+	platformUUID := domain.LegalEntityUUID{UUID: common.NewUUIDv7()}
+
+	name := "Eats Platform LLC"
+	address := testutils.GenerateRandomOpenapiAddress(shared.MustNewCountryCode("US"))
+	taxID := gofakeit.Numerify("###-###-###")
+
+	// Create bank account with merchant_id = platform UUID for payment routing
+	bankAccount, _ := createBankAccount(ctx, t, platformUUID.String())
+
+	request := settlementclient.CreatePlatformEntityJSONRequestBody{
+		PlatformEntityUuid: platformUUID,
+		Address:            settlementclient.Address(address),
+		BankAccountIban:    bankAccount,
+		BusinessName:       name,
+		Currency:           shared.MustNewCurrency("USD"),
+		TaxId:              taxID,
+	}
+
+	resp, err := clients.Settlements.CreatePlatformEntityWithResponse(
+		ctx,
+		&settlementclient.CreatePlatformEntityParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		request,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
+
+	return testPlatformEntity{
+		UUID:        resp.JSON201.PlatformEntityUuid,
+		BankAccount: bankAccount,
+	}
+}
+
+func createPlatformEntityWithCurrency(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+	currency shared.Currency,
+) testPlatformEntity {
+	t.Helper()
+
+	platformUUID := domain.LegalEntityUUID{UUID: common.NewUUIDv7()}
+
+	name := "Eats Platform LLC"
+	address := testutils.GenerateRandomOpenapiAddress(shared.MustNewCountryCode("US"))
+	taxID := gofakeit.Numerify("###-###-###")
+
+	bankAccount, _ := createBankAccount(ctx, t, platformUUID.String())
+
+	request := settlementclient.CreatePlatformEntityJSONRequestBody{
+		PlatformEntityUuid: platformUUID,
+		Address:            settlementclient.Address(address),
+		BankAccountIban:    bankAccount,
+		BusinessName:       name,
+		Currency:           currency,
+		TaxId:              taxID,
+	}
+
+	resp, err := clients.Settlements.CreatePlatformEntityWithResponse(
+		ctx,
+		&settlementclient.CreatePlatformEntityParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		request,
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
+
+	return testPlatformEntity{
+		UUID:        resp.JSON201.PlatformEntityUuid,
+		BankAccount: bankAccount,
+	}
+}
+
 type testRestaurant struct {
-	UUID app.RestaurantUUID
-	Data ordersclient.OnboardRestaurant
+	UUID        app.RestaurantUUID
+	Data        ordersclient.OnboardRestaurant
+	BankAccount string
 }
 
 func onboardRestaurant(
 	ctx context.Context,
 	t *testing.T,
 	clients testClients,
+	platformEntityUUID models.PlatformEntityUUID,
 	country shared.CountryCode,
 ) testRestaurant {
 	t.Helper()
@@ -119,9 +218,41 @@ func onboardRestaurant(
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
 
+	taxID := gofakeit.Numerify("###-###-###")
+
+	bankAccount, _ := createBankAccount(ctx, t, restaurantUUID.String())
+
+	partnerRequest := settlementclient.OnboardPartnerJSONRequestBody{
+		PartnerUuid:        http2.LegalEntityUUID{restaurantUUID.UUID},
+		PlatformEntityUuid: platformEntityUUID,
+		PartnerType:        domain.PartnerTypeRestaurant,
+		BusinessName:       addCompanySuffix(name),
+		TaxId:              taxID,
+		BankAccountIban:    bankAccount,
+		Currency:           shared.MustNewCurrency("USD"),
+		Address: settlementclient.Address{
+			Line1:       address.Line1,
+			Line2:       address.Line2,
+			City:        address.City,
+			PostalCode:  address.PostalCode,
+			CountryCode: address.CountryCode,
+		},
+	}
+
+	onboardResp, err := clients.Settlements.OnboardPartnerWithResponse(
+		ctx,
+		&settlementclient.OnboardPartnerParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		partnerRequest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, onboardResp.StatusCode())
+
 	return testRestaurant{
-		UUID: restaurantUUID,
-		Data: restaurantToCreate,
+		UUID:        restaurantUUID,
+		Data:        restaurantToCreate,
+		BankAccount: bankAccount,
 	}
 }
 
@@ -162,13 +293,15 @@ func registerCustomerInCity(ctx context.Context, t *testing.T, clients testClien
 }
 
 type testCourier struct {
-	UUID ordersclient.CourierUUID
+	UUID        ordersclient.CourierUUID
+	BankAccount string
 }
 
 func registerCourierInCity(
 	ctx context.Context,
 	t *testing.T,
 	clients testClients,
+	platformEntityUUID models.PlatformEntityUUID,
 	country shared.CountryCode,
 	city string,
 ) testCourier {
@@ -185,8 +318,101 @@ func registerCourierInCity(
 	require.Equal(t, http.StatusCreated, resp.StatusCode())
 	require.NotNil(t, resp.JSON201)
 
+	taxID := gofakeit.Numerify("###-###-###")
+	address := fakeAddressInUS()
+
+	bankAccount, _ := createBankAccount(ctx, t, resp.JSON201.CourierUuid.String())
+
+	partnerRequest := settlementclient.OnboardPartnerJSONRequestBody{
+		PartnerUuid:        http2.LegalEntityUUID{resp.JSON201.CourierUuid.UUID},
+		PlatformEntityUuid: platformEntityUUID,
+		PartnerType:        domain.PartnerTypeCourier,
+		BusinessName:       courierToCreate.Name + " LLC",
+		TaxId:              taxID,
+		BankAccountIban:    bankAccount,
+		Currency:           shared.MustNewCurrency("USD"),
+		Address: settlementclient.Address{
+			Line1:       address.Street,
+			Line2:       address.Unit,
+			City:        city,
+			PostalCode:  address.Zip,
+			CountryCode: country,
+		},
+	}
+
+	onboardResp, err := clients.Settlements.OnboardPartnerWithResponse(
+		ctx,
+		&settlementclient.OnboardPartnerParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		partnerRequest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, onboardResp.StatusCode())
+
 	return testCourier{
-		UUID: resp.JSON201.CourierUuid,
+		UUID:        resp.JSON201.CourierUuid,
+		BankAccount: bankAccount,
+	}
+}
+
+func registerCourierInCityWithCurrency(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+	platformEntityUUID models.PlatformEntityUUID,
+	country shared.CountryCode,
+	city string,
+	currency shared.Currency,
+) testCourier {
+	t.Helper()
+
+	courierToCreate := ordersclient.RegisterCourier{
+		Name:        gofakeit.Name(),
+		PhoneNumber: gofakeit.Phone(),
+		City:        city,
+	}
+
+	resp, err := clients.Orders.RegisterCourierWithResponse(ctx, courierToCreate)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusCreated, resp.StatusCode())
+	require.NotNil(t, resp.JSON201)
+
+	taxID := gofakeit.Numerify("###-###-###")
+	address := fakeAddressInUS()
+
+	bankAccount, _ := createBankAccount(ctx, t, resp.JSON201.CourierUuid.String())
+
+	partnerRequest := settlementclient.OnboardPartnerJSONRequestBody{
+		PartnerUuid:        http2.LegalEntityUUID{resp.JSON201.CourierUuid.UUID},
+		PlatformEntityUuid: platformEntityUUID,
+		PartnerType:        domain.PartnerTypeCourier,
+		BusinessName:       courierToCreate.Name + " LLC",
+		TaxId:              taxID,
+		BankAccountIban:    bankAccount,
+		Currency:           currency,
+		Address: settlementclient.Address{
+			Line1:       address.Street,
+			Line2:       address.Unit,
+			City:        city,
+			PostalCode:  address.Zip,
+			CountryCode: country,
+		},
+	}
+
+	onboardResp, err := clients.Settlements.OnboardPartnerWithResponse(
+		ctx,
+		&settlementclient.OnboardPartnerParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		partnerRequest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, onboardResp.StatusCode())
+
+	return testCourier{
+		UUID:        resp.JSON201.CourierUuid,
+		BankAccount: bankAccount,
 	}
 }
 
@@ -198,6 +424,7 @@ func placeOrder(
 	restaurantUUID app.RestaurantUUID,
 	restaurant ordersclient.OnboardRestaurant,
 	country shared.CountryCode,
+	cardNumber string,
 ) app.OrderUUID {
 	t.Helper()
 
@@ -236,8 +463,6 @@ func placeOrder(
 	require.False(t, quoteResp.JSON201.ServiceFeeGross.IsZero())
 	require.False(t, quoteResp.JSON201.TotalGross.IsZero())
 
-	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
-	createBankAccount(ctx, t, restaurantUUID.String())
 	nonce := preauthPayment(
 		ctx,
 		t,
@@ -669,6 +894,12 @@ func assertOrderWithArchivedItemFails(
 	)
 }
 
+func addCompanySuffix(name string) string {
+	companySuffixes := []string{"Corp.", "Inc.", "Ltd.", "Co."}
+
+	return fmt.Sprintf("%s %s", name, companySuffixes[rand.Intn(len(companySuffixes))])
+}
+
 func randomPrice() decimal.Decimal {
 	return decimal.New(int64(rand.Intn(200)+50), -1)
 }
@@ -692,6 +923,99 @@ func onboardRestaurantWithData(
 	)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+}
+
+func onboardPartnerForRestaurant(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+	platformEntityUUID models.PlatformEntityUUID,
+	restaurantUUID app.RestaurantUUID,
+	businessName string,
+) string {
+	t.Helper()
+
+	address := fakeAddressInUS()
+
+	taxID := gofakeit.Numerify("###-###-###")
+
+	bankAccount, _ := createBankAccount(ctx, t, restaurantUUID.String())
+
+	partnerRequest := settlementclient.OnboardPartnerJSONRequestBody{
+		PartnerUuid:        http2.LegalEntityUUID{restaurantUUID.UUID},
+		PlatformEntityUuid: platformEntityUUID,
+		PartnerType:        domain.PartnerTypeRestaurant,
+		BusinessName:       businessName,
+		TaxId:              taxID,
+		BankAccountIban:    bankAccount,
+		Address: settlementclient.Address{
+			Line1:       address.Street,
+			Line2:       address.Unit,
+			City:        address.City,
+			PostalCode:  address.Zip,
+			CountryCode: shared.MustNewCountryCode(address.Country),
+		},
+		Currency: shared.MustNewCurrency("USD"),
+	}
+
+	resp, err := clients.Settlements.OnboardPartnerWithResponse(
+		ctx,
+		&settlementclient.OnboardPartnerParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		partnerRequest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	return bankAccount
+}
+
+func onboardPartnerForRestaurantWithCurrency(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+	platformEntityUUID models.PlatformEntityUUID,
+	restaurantUUID app.RestaurantUUID,
+	businessName string,
+	currency shared.Currency,
+) string {
+	t.Helper()
+
+	address := fakeAddressInUS()
+
+	taxID := gofakeit.Numerify("###-###-###")
+
+	bankAccount, _ := createBankAccount(ctx, t, restaurantUUID.String())
+
+	partnerRequest := settlementclient.OnboardPartnerJSONRequestBody{
+		PartnerUuid:        http2.LegalEntityUUID{restaurantUUID.UUID},
+		PlatformEntityUuid: platformEntityUUID,
+		PartnerType:        domain.PartnerTypeRestaurant,
+		BusinessName:       businessName,
+		TaxId:              taxID,
+		BankAccountIban:    bankAccount,
+		Address: settlementclient.Address{
+			Line1:       address.Street,
+			Line2:       address.Unit,
+			City:        address.City,
+			PostalCode:  address.Zip,
+			CountryCode: shared.MustNewCountryCode(address.Country),
+		},
+		Currency: currency,
+	}
+
+	resp, err := clients.Settlements.OnboardPartnerWithResponse(
+		ctx,
+		&settlementclient.OnboardPartnerParams{
+			OperatorUUID: common.NewUUIDv7(),
+		},
+		partnerRequest,
+	)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	return bankAccount
 }
 
 func createQuote(
@@ -730,13 +1054,11 @@ func placeOrderFromQuote(
 	t *testing.T,
 	clients testClients,
 	customerUUID app.CustomerUUID,
-	restaurantUUID app.RestaurantUUID,
 	quote *ordersclient.CreateQuoteResponse,
+	cardNumber string,
 ) *ordersclient.CustomerOrder {
 	t.Helper()
 
-	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
-	createBankAccount(ctx, t, restaurantUUID.String())
 	nonce := preauthPayment(ctx, t, cardNumber, quote.TotalGross, quote.Currency.String(), quote.QuoteUuid.String())
 
 	placeOrderRequest := ordersclient.PlaceOrder{
@@ -855,6 +1177,58 @@ func preauthPayment(
 	idempotencyKey string,
 ) string {
 	return stubs.Payments.PreauthorizePayment(cardNumber, amount, currency)
+}
+
+type bankTransfer struct {
+	Amount                decimal.Decimal
+	Currency              string
+	ExternalAccountNumber string
+}
+
+func assertAccountBalance(ctx context.Context, t *testing.T, number string, amount decimal.Decimal, transfers []bankTransfer) {
+	balance, err := stubs.Payments.GetAccountBalance(number)
+	require.NoError(t, err)
+
+	require.True(t, balance.Equal(amount),
+		"Account %s balance expected to be %s, got %s",
+		number, amount.String(), balance.String())
+
+	history, err := stubs.Payments.GetAccountHistory(number)
+	require.NoError(t, err)
+
+	amounts := make([]string, 0, len(history))
+	for i, h := range history {
+		amounts = append(amounts, fmt.Sprintf("\t- #%v: %v %v %v %v (%v)", i, h.Amount.String(), h.Currency, h.ExternalAccountNumber, h.Reference, h.ReceiverDetails))
+	}
+
+	for _, expectedTransfer := range transfers {
+		found := false
+		for _, h := range history {
+			if h.Amount.Equal(expectedTransfer.Amount) &&
+				h.Currency == expectedTransfer.Currency &&
+				h.ExternalAccountNumber == expectedTransfer.ExternalAccountNumber {
+				found = true
+				break
+			}
+		}
+
+		if !found {
+			t.Errorf(
+				"Account %s does not contain balance change: %v %v %v\nAmounts found:\n%v\n",
+				number,
+				expectedTransfer.ExternalAccountNumber,
+				expectedTransfer.Amount,
+				expectedTransfer.Currency,
+				strings.Join(amounts, "\n"),
+			)
+		}
+	}
+}
+
+func fakeAddressInUS() *gofakeit.AddressInfo {
+	address := gofakeit.Address()
+	address.Country = "US"
+	return address
 }
 
 func onboardRestaurantWithName(
