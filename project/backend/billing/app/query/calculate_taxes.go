@@ -2,9 +2,10 @@ package query
 
 import (
 	"context"
+	"fmt"
+
 	"eats/backend/billing/api/module/client"
 	"eats/backend/billing/domain"
-	"fmt"
 )
 
 func (h *Handlers) CalculateTaxes(ctx context.Context, query client.CalculateTaxesRequest) (client.CalculateTaxesResponse, error) {
