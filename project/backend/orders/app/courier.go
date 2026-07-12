@@ -164,23 +164,23 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 		return err
 	}
 
-	orderItems, err := s.orderRepository.OrderItemsByOrderID(ctx, orderUUID)
+	items, err := s.orderRepository.OrderItemsByOrderID(ctx, orderUUID)
 	if err != nil {
 		return err
 	}
 
 	var lineItems []billingClient.LineItem
-	for _, orderItem := range orderItems {
-		lineItemType, err := lineItemTypeFromCategory(orderItem.Category)
+	for _, item := range items {
+		itemType, err := lineItemTypeFromCategory(item.Category)
 		if err != nil {
 			return err
 		}
 
 		lineItems = append(lineItems, billingClient.LineItem{
-			Name:       orderItem.Name,
-			Type:       lineItemType,
-			UnitAmount: shared.NewGrossAmount(orderItem.GrossPrice),
-			Quantity:   orderItem.Quantity,
+			Name:       item.Name,
+			Type:       itemType,
+			UnitAmount: shared.NewGrossAmount(item.GrossPrice),
+			Quantity:   item.Quantity,
 		})
 	}
 
@@ -280,10 +280,10 @@ func checkCustomerMatch(orderCustomer CustomerUUID, customerUUID CustomerUUID) e
 
 func lineItemTypeFromCategory(category ItemCategory) (shared.LineItemType, error) {
 	switch category {
-	case ItemCategoryBeverage:
-		return shared.LineItemTypeBeverage, nil
 	case ItemCategoryFood:
 		return shared.LineItemTypeFood, nil
+	case ItemCategoryBeverage:
+		return shared.LineItemTypeBeverage, nil
 	default:
 		return shared.LineItemType{}, fmt.Errorf("unsupported item category: %s", category)
 	}

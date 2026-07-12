@@ -45,17 +45,18 @@ type Svc struct {
 func New(
 	ctx context.Context,
 	dbPgx *pgxpool.Pool,
-	externalServices ExternalServices,
+	services ExternalServices,
 ) (Svc, error) {
 	e := commonHTTP.NewEcho()
 
 	// We use a pointer here so modules can register their contracts during Init(),
 	// then all modules can call each other after initialization completes.
 	moduleContracts := &contracts.Contracts{}
+
 	modules := []module.Module{
-		orders.NewModule(dbPgx, moduleContracts, externalServices.Payments),
+		orders.NewModule(dbPgx, moduleContracts, services.Payments),
 		delivery.NewModule(),
-		billing.NewModule(dbPgx, externalServices.FileStorage, externalServices.Tax),
+		billing.NewModule(dbPgx, services.FileStorage, services.Tax),
 	}
 
 	for _, module := range modules {

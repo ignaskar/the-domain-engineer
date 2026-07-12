@@ -2,13 +2,15 @@ package tax
 
 import (
 	"context"
-	"eats/backend/billing/domain"
-	"eats/backend/common"
-	"eats/backend/common/shared"
 	"fmt"
+	"net/http"
 
 	"github.com/ThreeDotsLabs/the-domain-engineer/clients"
 	"github.com/ThreeDotsLabs/the-domain-engineer/clients/tax"
+
+	"eats/backend/billing/domain"
+	"eats/backend/common"
+	"eats/backend/common/shared"
 )
 
 type Client struct {
@@ -23,65 +25,55 @@ func NewClient(clients *clients.Clients) *Client {
 }
 
 func (c *Client) GetTaxRate(ctx context.Context, input domain.TaxRateRequest) (domain.TaxRate, error) {
-	taxClass, err := toTaxClass(input.LineItemType)
-	if err != nil {
-		return domain.TaxRate{}, err
+	// We map the line item type to the external API's tax class explicitly.
+	// This is an anti-corruption layer: internal and external types evolve independently.
+	var taxClass tax.TaxRateRequestTaxClass
+	switch input.LineItemType {
+	case shared.LineItemTypeFood:
+		taxClass = tax.TaxRateRequestTaxClassFOOD
+	case shared.LineItemTypeBeverage:
+		taxClass = tax.TaxRateRequestTaxClassBEVERAGE
+	case shared.LineItemTypeDelivery:
+		taxClass = tax.TaxRateRequestTaxClassDELIVERY
+	case shared.LineItemTypeService:
+		taxClass = tax.TaxRateRequestTaxClassSERVICE
+	default:
+		return domain.TaxRate{}, fmt.Errorf("unknown line item type: %s", input.LineItemType.String())
 	}
 
-	var taxID *string
+	var buyerTaxID *string
 	if input.BuyerTaxID != nil {
-		taxID = common.ToPtr(input.BuyerTaxID.String())
+		buyerTaxID = common.ToPtr(input.BuyerTaxID.String())
 	}
 
-	req := tax.GetTaxRateJSONRequestBody{
-		BuyerCountryCode:  input.BuyerCountryCode.Code(),
-		BuyerTaxId:        taxID,
-		SellerCountryCode: input.SellerCountryCode.Code(),
+	resp, err := c.clients.Tax.GetTaxRateWithResponse(ctx, tax.GetTaxRateJSONRequestBody{
+		BuyerCountryCode:  input.BuyerCountryCode.String(),
+		BuyerTaxId:        buyerTaxID,
+		SellerCountryCode: input.SellerCountryCode.String(),
 		TaxClass:          &taxClass,
 		TransactionDate:   input.TransactionDate,
-	}
-	resp, err := c.clients.Tax.GetTaxRateWithResponse(ctx, req)
+	})
 	if err != nil {
 		return domain.TaxRate{}, fmt.Errorf("failed to get tax rate: %w", err)
 	}
 
-	taxType, err := fromTaxClass(resp.JSON200.TaxType)
-	if err != nil {
-		return domain.TaxRate{}, fmt.Errorf("failed to parse tax type: %w", err)
+	if resp.StatusCode() != http.StatusOK {
+		return domain.TaxRate{}, fmt.Errorf("failed to get tax rate: unexpected status %d", resp.StatusCode())
 	}
 
-	taxRate, err := domain.NewTaxRate(resp.JSON200.Rate, taxType)
-	if err != nil {
-		return domain.TaxRate{}, fmt.Errorf("failed to build tax rate: %w", err)
-	}
-
-	return taxRate, nil
-}
-
-func toTaxClass(lit shared.LineItemType) (tax.TaxRateRequestTaxClass, error) {
-	switch lit {
-	case shared.LineItemTypeBeverage:
-		return tax.TaxRateRequestTaxClassBEVERAGE, nil
-	case shared.LineItemTypeDelivery:
-		return tax.TaxRateRequestTaxClassDELIVERY, nil
-	case shared.LineItemTypeFood:
-		return tax.TaxRateRequestTaxClassFOOD, nil
-	case shared.LineItemTypeService:
-		return tax.TaxRateRequestTaxClassSERVICE, nil
-	default:
-		return "", fmt.Errorf("unknown line item type: %v", lit)
-	}
-}
-
-func fromTaxClass(tc tax.TaxRateResponseTaxType) (domain.TaxType, error) {
-	switch tc {
-	case tax.GST:
-		return domain.TaxTypeGST, nil
+	// We map the tax type explicitly, rather than unmarshalling it to the enum type.
+	// It comes from an external system, and it uses slightly different values than our internal enum.
+	var domainTax domain.TaxType
+	switch resp.JSON200.TaxType {
 	case tax.VAT:
-		return domain.TaxTypeVAT, nil
+		domainTax = domain.TaxTypeVAT
+	case tax.GST:
+		domainTax = domain.TaxTypeGST
 	case tax.SALES:
-		return domain.TaxTypeSalesTax, nil
+		domainTax = domain.TaxTypeSalesTax
 	default:
-		return domain.TaxType{}, fmt.Errorf("unknown tax rate response tax type: %v", tc)
+		return domain.TaxRate{}, fmt.Errorf("unknown tax type: %s", resp.JSON200.TaxType)
 	}
+
+	return domain.NewTaxRate(resp.JSON200.Rate, domainTax)
 }

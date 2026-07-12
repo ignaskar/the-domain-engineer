@@ -2,10 +2,6 @@ package main
 
 import (
 	"context"
-	"eats/backend/billing/adapters/tax"
-	"eats/backend/common/file"
-	"eats/backend/orders/adapters/payments"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -17,7 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eats/backend"
+	"eats/backend/billing/adapters/tax"
+	"eats/backend/common/file"
 	"eats/backend/common/log"
+	"eats/backend/orders/adapters/payments"
 )
 
 func main() {
@@ -45,18 +44,17 @@ func main() {
 		&http.Client{Timeout: 10 * time.Second},
 	)
 	if err != nil {
-		panic(fmt.Errorf("creating api clients failed: %w", err))
+		panic(err)
 	}
 
-	services := backend.ExternalServices{
-		Payments:    payments.NewClient(apiClients),
-		Tax:         tax.NewClient(apiClients),
-		FileStorage: file.NewPublicStorage(apiClients),
-	}
 	svc, err := backend.New(
 		ctx,
 		dbPgx,
-		services,
+		backend.ExternalServices{
+			Payments:    payments.NewClient(apiClients),
+			Tax:         tax.NewClient(apiClients),
+			FileStorage: file.NewPublicStorage(apiClients),
+		},
 	)
 	if err != nil {
 		panic(err)
