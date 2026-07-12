@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 
 	"eats/backend/common/shared"
 	"eats/backend/settlements/app/models"
@@ -20,10 +21,24 @@ type OnboardPartner struct {
 }
 
 func (h *Handlers) OnboardPartner(ctx context.Context, cmd OnboardPartner) error {
-	// TODO: implement
-	// 1. Validate PlatformEntityUUID is not zero.
-	// 2. Create a new LegalEntity with type Partner using models.NewLegalEntity.
-	// 3. Create a Partner using models.NewPartner.
-	// 4. Save everything atomically using legalEntityRepository.SavePartner.
-	return nil
+	if cmd.PlatformEntityUUID.IsZero() {
+		return errors.New("empty platform entity uuid")
+	}
+
+	le, err := models.NewLegalEntity(
+		cmd.PartnerUUID,
+		models.LegalEntityPartner,
+		cmd.BusinessName,
+		cmd.TaxID,
+		cmd.Address,
+		cmd.BankAccountNumber,
+		cmd.Currency,
+	)
+	if err != nil {
+		return err
+	}
+
+	partner := models.NewPartner(le, cmd.PlatformEntityUUID)
+
+	return h.legalEntityRepository.SavePartner(ctx, partner)
 }
