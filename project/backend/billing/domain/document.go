@@ -319,3 +319,50 @@ func (l LineItem) LineItemType() shared.LineItemType {
 func (l LineItem) PriceBreakdown() PriceBreakdown {
 	return l.breakdown
 }
+
+type TaxCalculationInput struct {
+	BuyerCountryCode  shared.CountryCode
+	BuyerTaxID        *shared.TaxID
+	SellerCountryCode shared.CountryCode
+	LineItems         []NewLineItemData
+	Currency          shared.Currency
+}
+
+type TaxCalculation struct {
+	lineItems []LineItem
+	summary   PriceBreakdownSummary
+}
+
+func (f DocumentFactory) NewTaxCalculation(ctx context.Context, input TaxCalculationInput) (TaxCalculation, error) {
+	lineItems := make([]LineItem, 0, len(input.LineItems))
+	for _, li := range input.LineItems {
+		lineItem, err := f.newLineItem(
+			ctx,
+			li,
+			input.BuyerCountryCode,
+			input.BuyerTaxID,
+			input.SellerCountryCode,
+			input.Currency,
+		)
+		if err != nil {
+			return TaxCalculation{}, fmt.Errorf("could not create line item: %w", err)
+		}
+
+		lineItems = append(lineItems, lineItem)
+	}
+
+	summary := summarizeLineItems(lineItems)
+
+	return TaxCalculation{
+		lineItems: lineItems,
+		summary:   summary,
+	}, nil
+}
+
+func (t TaxCalculation) LineItems() []LineItem {
+	return t.lineItems
+}
+
+func (t TaxCalculation) Summary() PriceBreakdownSummary {
+	return t.summary
+}
