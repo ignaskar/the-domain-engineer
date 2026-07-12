@@ -35,7 +35,9 @@ func (q *Queries) LegalEntityByUUID(ctx context.Context, legalEntityUuid domain.
 }
 
 const platformByPartnerUUID = `-- name: PlatformByPartnerUUID :one
-SELECT platform_entity_uuid FROM settlements.partner_platform_mappings WHERE partner_uuid = $1
+SELECT platform_entity_uuid
+FROM settlements.partner_platform_mappings
+WHERE partner_uuid = $1
 `
 
 func (q *Queries) PlatformByPartnerUUID(ctx context.Context, partnerUuid domain.LegalEntityUUID) (models.PlatformEntityUUID, error) {
@@ -86,11 +88,9 @@ func (q *Queries) SaveLegalEntity(ctx context.Context, arg SaveLegalEntityParams
 }
 
 const savePartnerPlatformMapping = `-- name: SavePartnerPlatformMapping :exec
-INSERT INTO settlements.partner_platform_mappings (
-    partner_uuid,
-    platform_entity_uuid
-) VALUES ($1, $2)
-ON CONFLICT DO NOTHING
+INSERT INTO settlements.partner_platform_mappings (partner_uuid, platform_entity_uuid)
+VALUES ($1, $2)
+ON CONFLICT (partner_uuid) DO NOTHING
 `
 
 type SavePartnerPlatformMappingParams struct {

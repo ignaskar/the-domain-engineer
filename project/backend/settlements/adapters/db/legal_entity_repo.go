@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"eats/backend/common"
-
 	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"eats/backend/common"
 	"eats/backend/settlements/adapters/db/dbmodels"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/domain"
@@ -73,28 +72,23 @@ func (r *LegalEntityRepository) SavePlatformEntity(ctx context.Context, platform
 func (r *LegalEntityRepository) PartnerByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (models.Partner, error) {
 	queries := dbmodels.New(r.db)
 
-	le, err := queries.LegalEntityByUUID(ctx, uuid)
+	legalEntity, err := queries.LegalEntityByUUID(ctx, uuid)
 	if err != nil {
 		return models.Partner{}, fmt.Errorf("error getting legal entity by uuid: %w", err)
 	}
 
-	pid, err := queries.PlatformByPartnerUUID(ctx, uuid)
+	platformUUID, err := queries.PlatformByPartnerUUID(ctx, uuid)
 	if err != nil {
-		return models.Partner{}, fmt.Errorf("error getting partner by uuid: %w", err)
+		return models.Partner{}, fmt.Errorf("error getting platform uuid by partner uuid: %w", err)
 	}
 
 	return models.Partner{
-		LegalEntity:        legalEntityFromDB(le),
-		PlatformEntityUUID: pid,
+		LegalEntity:        legalEntityFromDB(legalEntity),
+		PlatformEntityUUID: platformUUID,
 	}, nil
 }
 
 func (r *LegalEntityRepository) SavePartner(ctx context.Context, partner models.Partner) error {
-	// TODO: implement
-	// In a single transaction (use common.UpdateInTx):
-	// 1. Save the partner's legal entity.
-	// 2. Verify the platform entity exists and is of type "platform".
-	// 3. Save the partner-platform mapping.
 	return common.UpdateInTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
 		queries := dbmodels.New(tx)
 
@@ -111,12 +105,12 @@ func (r *LegalEntityRepository) SavePartner(ctx context.Context, partner models.
 			return fmt.Errorf("error saving legal entity: %w", err)
 		}
 
-		le, err := queries.LegalEntityByUUID(ctx, partner.PlatformEntityUUID.LegalEntityUUID)
+		platform, err := queries.LegalEntityByUUID(ctx, partner.PlatformEntityUUID.LegalEntityUUID)
 		if err != nil {
-			return fmt.Errorf("error getting legal entity by uuid: %w", err)
+			return fmt.Errorf("error getting platform legal entity: %w", err)
 		}
 
-		if le.LegalEntityType != models.LegalEntityPlatform {
+		if platform.LegalEntityType != models.LegalEntityPlatform {
 			return fmt.Errorf("legal entity %s is not a platform", partner.PlatformEntityUUID)
 		}
 
@@ -125,7 +119,7 @@ func (r *LegalEntityRepository) SavePartner(ctx context.Context, partner models.
 			PlatformEntityUuid: partner.PlatformEntityUUID,
 		})
 		if err != nil {
-			return fmt.Errorf("error saving partner platform mapping: %w", err)
+			return fmt.Errorf("error saving partner-platform mapping: %w", err)
 		}
 
 		return nil
