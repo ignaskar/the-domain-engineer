@@ -2,11 +2,19 @@ package models
 
 import (
 	"context"
+	"errors"
+
 	"eats/backend/common"
 	"eats/backend/common/shared"
 	"eats/backend/settlements/domain"
-	"errors"
 )
+
+type LegalEntityRepository interface {
+	LegalEntityByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (LegalEntity, error)
+	PartnerByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (Partner, error)
+	SavePartner(ctx context.Context, partner Partner) error
+	SavePlatformEntity(ctx context.Context, platform LegalEntity) error
+}
 
 type PlatformEntityUUID struct {
 	domain.LegalEntityUUID
@@ -16,22 +24,21 @@ type LegalEntityType struct {
 	common.Enum[LegalEntityTypeValues]
 }
 
-type LegalEntityTypeValues string
+type LegalEntityTypeValues struct{}
 
-func (LegalEntityTypeValues) Values() []string {
+func (l LegalEntityTypeValues) Values() []string {
 	return []string{"platform", "partner"}
 }
 
-var LegalEntityPlatform = common.MustEnum[LegalEntityType]("platform")
-var LegalEntityPartner = common.MustEnum[LegalEntityType]("partner")
+var (
+	LegalEntityPlatform = common.MustEnum[LegalEntityType]("platform")
+	LegalEntityPartner  = common.MustEnum[LegalEntityType]("partner")
+)
 
-type LegalEntityRepository interface {
-	LegalEntityByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (LegalEntity, error)
-	PartnerByUUID(ctx context.Context, uuid domain.LegalEntityUUID) (Partner, error)
-	SavePartner(ctx context.Context, partner Partner) error
-	SavePlatformEntity(ctx context.Context, platform LegalEntity) error
-}
-
+// LegalEntity here is a settlements-side record, not a domain-layer entity
+// (the billing LegalEntity is the encapsulated one). It's immutable and has
+// no complex logic, so we pragmatically skip encapsulation: exported fields,
+// no getters.
 type LegalEntity struct {
 	UUID              domain.LegalEntityUUID
 	Type              LegalEntityType
@@ -52,11 +59,11 @@ func NewLegalEntity(
 	currency shared.Currency,
 ) (LegalEntity, error) {
 	if uuid.IsZero() {
-		return LegalEntity{}, errors.New("legal entity UUID cannot be empty")
+		return LegalEntity{}, errors.New("uuid cannot be zero")
 	}
 
 	if legalEntityType.IsZero() {
-		return LegalEntity{}, errors.New("legal entity Type cannot be empty")
+		return LegalEntity{}, errors.New("legal entity type cannot be empty")
 	}
 
 	if businessName == "" {
@@ -64,19 +71,19 @@ func NewLegalEntity(
 	}
 
 	if taxID.IsZero() {
-		return LegalEntity{}, errors.New("tax ID cannot be empty")
+		return LegalEntity{}, errors.New("taxID cannot be zero")
 	}
 
 	if address.IsZero() {
-		return LegalEntity{}, errors.New("address cannot be empty")
+		return LegalEntity{}, errors.New("address cannot be zero")
 	}
 
 	if bankAccountNumber.IsZero() {
-		return LegalEntity{}, errors.New("bank account number cannot be empty")
+		return LegalEntity{}, errors.New("bank account cannot be zero")
 	}
 
 	if currency.IsZero() {
-		return LegalEntity{}, errors.New("currency cannot be empty")
+		return LegalEntity{}, errors.New("currency cannot be zero")
 	}
 
 	return LegalEntity{
@@ -89,26 +96,3 @@ func NewLegalEntity(
 		Currency:          currency,
 	}, nil
 }
-
-// TODO: design the LegalEntity entity and the supporting legal-entity types.
-//
-// You'll need to add:
-//
-// - LegalEntityUUID — wraps common.UUID for type safety.
-// - LegalEntityType — an enum with values "platform" and "partner". See
-//   common.Enum and how IBAN-adjacent enums are structured elsewhere in the
-//   codebase.
-// - PlatformEntityUUID — wraps LegalEntityUUID, used when a value is
-//   specifically a platform identifier.
-// - LegalEntityPlatform and LegalEntityPartner — instances of LegalEntityType
-//   for the two values.
-// - LegalEntity struct with fields: UUID, Type, BusinessName, TaxID, Address,
-//   BankAccountNumber (IBAN), Currency.
-// - NewLegalEntity constructor that validates every field is non-zero (use
-//   IsZero() on each VO, and check BusinessName is not the empty string).
-//   Return a specific error per missing field.
-//
-// LegalEntity here is a settlements-side record, not a domain-layer entity
-// (the billing LegalEntity is the encapsulated one). It's immutable and has
-// no complex logic, so we pragmatically skip encapsulation: exported fields,
-// no getters.
