@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"fmt"
+
 	"eats/backend/common"
 	"eats/backend/common/shared"
 	"eats/backend/settlements/app/command"
@@ -35,17 +37,17 @@ func (h Handler) OnboardPartner(ctx context.Context, request OnboardPartnerReque
 		request.Body.Address.CountryCode,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating address: %w", err)
 	}
 
 	taxID, err := shared.NewTaxID(request.Body.TaxId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating tax ID: %w", err)
 	}
 
-	iban, err := domain.NewIBAN(request.Body.BankAccountIban)
+	bankAccount, err := domain.NewIBAN(request.Body.BankAccountIban)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating bank account IBAN: %w", err)
 	}
 
 	cmd := command.OnboardPartner{
@@ -55,12 +57,11 @@ func (h Handler) OnboardPartner(ctx context.Context, request OnboardPartnerReque
 		BusinessName:       request.Body.BusinessName,
 		TaxID:              taxID,
 		Address:            address,
-		BankAccountNumber:  iban,
+		BankAccountNumber:  bankAccount,
 		Currency:           request.Body.Currency,
 	}
 
-	err = h.commandHandler.OnboardPartner(ctx, cmd)
-	if err != nil {
+	if err := h.commandHandler.OnboardPartner(ctx, cmd); err != nil {
 		return nil, err
 	}
 
@@ -80,17 +81,17 @@ func (h Handler) CreatePlatformEntity(ctx context.Context, request CreatePlatfor
 		request.Body.Address.CountryCode,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating address: %w", err)
 	}
 
 	taxID, err := shared.NewTaxID(request.Body.TaxId)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating tax ID: %w", err)
 	}
 
-	iban, err := domain.NewIBAN(request.Body.BankAccountIban)
+	bankAccount, err := domain.NewIBAN(request.Body.BankAccountIban)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating bank account IBAN: %w", err)
 	}
 
 	cmd := command.CreatePlatformEntity{
@@ -98,7 +99,7 @@ func (h Handler) CreatePlatformEntity(ctx context.Context, request CreatePlatfor
 		BusinessName:       request.Body.BusinessName,
 		TaxID:              taxID,
 		Address:            address,
-		BankAccountNumber:  iban,
+		BankAccountNumber:  bankAccount,
 		Currency:           request.Body.Currency,
 	}
 
@@ -107,7 +108,9 @@ func (h Handler) CreatePlatformEntity(ctx context.Context, request CreatePlatfor
 		return nil, err
 	}
 
-	return CreatePlatformEntity201JSONResponse{PlatformEntityUuid: uuid}, nil
+	return CreatePlatformEntity201JSONResponse{
+		PlatformEntityUuid: uuid,
+	}, nil
 }
 
 func Register(e EchoRouter, commandHandlers *command.Handlers) error {
