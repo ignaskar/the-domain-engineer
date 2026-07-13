@@ -53,6 +53,16 @@ type LegalEntity struct {
 	TaxID   *shared.TaxID
 }
 
+type DocumentReadModel struct {
+	UUID           string
+	DocumentNumber string
+	LineItems      []LineItemReadModel
+
+	NetTotal   decimal.Decimal
+	TaxTotal   decimal.Decimal
+	GrossTotal decimal.Decimal
+}
+
 type LineItemReadModel struct {
 	Name     string
 	Type     shared.LineItemType
