@@ -2,71 +2,64 @@ package command
 
 import (
 	"context"
-	billingClient "eats/backend/billing/api/module/client"
-	"eats/backend/common/log"
-	"eats/backend/common/shared"
-	settlementsClient "eats/backend/settlements/api/module/client"
-	"eats/backend/settlements/app/models"
-	"eats/backend/settlements/domain"
+	"fmt"
 	"time"
 
+	"eats/backend/billing/api/module/client"
+	"eats/backend/common/log"
+	"eats/backend/common/shared"
 	settlementsModule "eats/backend/settlements/api/module/client"
+	"eats/backend/settlements/domain"
 )
 
 func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.StartSettlementRequest) error {
-	if err := cmd.Validate(); err != nil {
-		return err
-	}
-
-	le, err := h.legalEntityRepository.LegalEntityByUUID(ctx, domain.LegalEntityUUID{cmd.RestaurantUUID})
+	err := cmd.Validate()
 	if err != nil {
 		return err
 	}
 
-	externalRef := cmd.OrderUUID.String()
-	req := billingClient.IssueReceiptRequest{
-		ExternalReference: &externalRef,
+	restaurantUUID := domain.LegalEntityUUID{cmd.RestaurantUUID}
+
+	restaurant, err := h.legalEntityRepository.LegalEntityByUUID(ctx, restaurantUUID)
+	if err != nil {
+		return fmt.Errorf("could not get restaurant entity: %w", err)
+	}
+
+	var lineItems []client.LineItem
+	for _, l := range cmd.LineItems {
+		lineItems = append(lineItems, client.LineItem{
+			Name:       l.Name,
+			Type:       l.Type,
+			Quantity:   l.Quantity,
+			UnitAmount: shared.NewGrossAmount(l.GrossAmount),
+		})
+	}
+
+	externalReference := cmd.OrderUUID.String()
+
+	err = h.modules.IssueReceipt(ctx, client.IssueReceiptRequest{
+		ExternalReference: &externalReference,
 		IssueDate:         time.Now(),
 		Currency:          cmd.Currency,
-		Seller:            toBillingLegalEntity(le),
-		Buyer: billingClient.LegalEntity{
+		Seller: client.LegalEntity{
+			Name:    restaurant.BusinessName,
+			Address: restaurant.Address,
+			TaxID:   &restaurant.TaxID,
+		},
+		Buyer: client.LegalEntity{
 			Name:    cmd.CustomerName,
 			Address: cmd.CustomerAddress,
-			TaxID:   nil,
 		},
-		LineItems: toBillingLineItems(cmd.LineItems),
-	}
-
-	err = h.modules.IssueReceipt(ctx, req)
+		LineItems: lineItems,
+	})
 	if err != nil {
-		return err
+		return fmt.Errorf("could not issue receipt: %w", err)
 	}
 
-	log.FromContext(ctx).With("order_id", cmd.OrderUUID).Info("Settlement started successfully")
+	log.FromContext(ctx).Info(
+		"Settlement started",
+		"order", cmd.OrderUUID,
+	)
+
 	return nil
-}
-
-func toBillingLineItems(lis []settlementsClient.LineItem) []billingClient.LineItem {
-	out := make([]billingClient.LineItem, 0, len(lis))
-	for _, li := range lis {
-		out = append(out, toBillingLineItem(li))
-	}
-	return out
-}
-
-func toBillingLineItem(li settlementsClient.LineItem) billingClient.LineItem {
-	return billingClient.LineItem{
-		Name:       li.Name,
-		Type:       li.Type,
-		UnitAmount: shared.NewGrossAmount(li.GrossAmount),
-		Quantity:   li.Quantity,
-	}
-}
-
-func toBillingLegalEntity(le models.LegalEntity) billingClient.LegalEntity {
-	return billingClient.LegalEntity{
-		Name:    le.BusinessName,
-		Address: le.Address,
-		TaxID:   &le.TaxID,
-	}
 }

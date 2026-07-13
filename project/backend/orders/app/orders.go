@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	settlementsClient "eats/backend/settlements/api/module/client"
 	"errors"
 	"fmt"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"eats/backend/common/log"
 	"eats/backend/common/shared"
 	deliveryModule "eats/backend/delivery/api/module/client"
+	settlementsModule "eats/backend/settlements/api/module/client"
 )
 
 type QuoteUUID struct {
@@ -429,11 +429,16 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrder) (Order, error)
 		return Order{}, fmt.Errorf("error creating order from quote: %w", err)
 	}
 
-	legalEntity, err := s.modules.GetPlatformEntity(ctx, settlementsClient.GetPlatformEntityRequest{
+	// Call the settlements service before the transaction to avoid holding a database connection
+	// while waiting for a response. If other modules share the same database, exhausting the
+	// pool this way is a self-inflicted DDoS.
+	// In production, use a separate database user per module with its own connection limit.
+	// Restaurant platform data is immutable, so reading it before the transaction is safe.
+	platformInfo, err := s.modules.GetPlatformEntity(ctx, settlementsModule.GetPlatformEntityRequest{
 		PartnerUUID: quote.RestaurantUUID.UUID,
 	})
 	if err != nil {
-		return Order{}, fmt.Errorf("error getting legal entity: %w", err)
+		return Order{}, fmt.Errorf("error getting platform for restaurant: %w", err)
 	}
 
 	// CapturePayment is called outside the transaction.
@@ -443,7 +448,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrder) (Order, error)
 	// If CapturePayment succeeds but SaveOrder fails, the payment was captured but the order
 	// is not saved. A reconciliation process is needed to handle this edge case.
 	// An event-driven approach would be the proper solution. See https://threedots.tech/event-driven/
-	err = s.paymentsService.CapturePayment(ctx, req.PaymentNonce, quote.TotalAmountGross, legalEntity.PlatformUUID.String())
+	err = s.paymentsService.CapturePayment(ctx, req.PaymentNonce, quote.TotalAmountGross, platformInfo.PlatformUUID.String())
 	if err != nil {
 		return Order{}, fmt.Errorf("error charging card for order: %w", err)
 	}

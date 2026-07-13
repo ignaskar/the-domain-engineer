@@ -12,8 +12,8 @@ import (
 
 type ModulesContract interface {
 	CalculateDeliveryFee(ctx context.Context, req deliveryModule.CalculateDeliveryFeeRequest) (deliveryModule.CalculateDeliveryFeeResponse, error)
-	CalculateTaxes(ctx context.Context, req billingModule.CalculateTaxesRequest) (billingModule.CalculateTaxesResponse, error)
 	StartSettlement(ctx context.Context, cmd settlementsModule.StartSettlementRequest) error
+	CalculateTaxes(ctx context.Context, req billingModule.CalculateTaxesRequest) (billingModule.CalculateTaxesResponse, error)
 	GetPlatformEntity(ctx context.Context, req settlementsModule.GetPlatformEntityRequest) (settlementsModule.GetPlatformEntityResponse, error)
 }
 

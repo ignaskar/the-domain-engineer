@@ -2,6 +2,8 @@ package module
 
 import (
 	"context"
+	"fmt"
+
 	"eats/backend/settlements/api/module/client"
 	"eats/backend/settlements/app/command"
 	"eats/backend/settlements/app/models"
@@ -32,12 +34,12 @@ func (s Settlements) StartSettlement(ctx context.Context, cmd client.StartSettle
 }
 
 func (s Settlements) GetPlatformEntity(ctx context.Context, req client.GetPlatformEntityRequest) (client.GetPlatformEntityResponse, error) {
-	p, err := s.legalEntityRepository.PartnerByUUID(ctx, domain.LegalEntityUUID{req.PartnerUUID})
+	partner, err := s.legalEntityRepository.PartnerByUUID(ctx, domain.LegalEntityUUID{req.PartnerUUID})
 	if err != nil {
-		return client.GetPlatformEntityResponse{}, err
+		return client.GetPlatformEntityResponse{}, fmt.Errorf("error getting partner: %w", err)
 	}
 
 	return client.GetPlatformEntityResponse{
-		PlatformUUID: p.PlatformEntityUUID.UUID,
+		PlatformUUID: partner.PlatformEntityUUID.UUID,
 	}, nil
 }

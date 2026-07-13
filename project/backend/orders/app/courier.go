@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	settlementsClient "eats/backend/settlements/api/module/client"
 	"fmt"
 	"strings"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"eats/backend/common"
 	"eats/backend/common/log"
 	"eats/backend/common/shared"
+	"eats/backend/settlements/api/module/client"
 )
 
 type CourierUUID struct {
@@ -148,37 +148,37 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 		return err
 	}
 
-	var lineItems []settlementsClient.LineItem
+	var lineItems []client.LineItem
 	for _, item := range items {
 		itemType, err := lineItemTypeFromCategory(item.Category)
 		if err != nil {
 			return err
 		}
 
-		lineItems = append(lineItems, settlementsClient.LineItem{
+		lineItems = append(lineItems, client.LineItem{
 			Name:        item.Name,
 			Type:        itemType,
-			GrossAmount: item.GrossPrice,
 			Quantity:    item.Quantity,
+			GrossAmount: item.GrossPrice,
 		})
 	}
 
-	lineItems = append(lineItems, settlementsClient.LineItem{
+	lineItems = append(lineItems, client.LineItem{
 		Name:        "Delivery",
 		Type:        shared.LineItemTypeDelivery,
-		GrossAmount: order.DeliveryFeeGross,
 		Quantity:    1,
+		GrossAmount: order.DeliveryFeeGross,
 	})
 
-	lineItems = append(lineItems, settlementsClient.LineItem{
+	lineItems = append(lineItems, client.LineItem{
 		Name:        "Service Fee",
 		Type:        shared.LineItemTypeService,
-		GrossAmount: order.ServiceFeeGross,
 		Quantity:    1,
+		GrossAmount: order.ServiceFeeGross,
 	})
 
 	// this is idempotent operation
-	err = s.modules.StartSettlement(ctx, settlementsClient.StartSettlementRequest{
+	err = s.modules.StartSettlement(ctx, client.StartSettlementRequest{
 		OrderUUID:       orderUUID.UUID,
 		RestaurantUUID:  order.RestaurantUUID.UUID,
 		CourierUUID:     order.CourierUUID.UUID,
