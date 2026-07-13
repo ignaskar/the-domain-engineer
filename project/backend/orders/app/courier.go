@@ -2,11 +2,11 @@ package app
 
 import (
 	"context"
+	settlementsClient "eats/backend/settlements/api/module/client"
 	"fmt"
 	"strings"
 	"time"
 
-	billingClient "eats/backend/billing/api/module/client"
 	"eats/backend/common"
 	"eats/backend/common/log"
 	"eats/backend/common/shared"
@@ -132,27 +132,6 @@ func (s *Service) CourierReportDeliveryPickup(ctx context.Context, courierUUID C
 	)
 }
 
-// Hardcoded platform seller details. Good enough for the MVP.
-func newPlatformLegalEntity() (billingClient.LegalEntity, error) {
-	addr, err := shared.NewAddress("1 Platform Way", "", "10001", "New York", shared.MustNewCountryCode("US"))
-	if err != nil {
-		return billingClient.LegalEntity{}, err
-	}
-
-	taxID, err := shared.NewTaxID("123456789")
-	if err != nil {
-		return billingClient.LegalEntity{}, err
-	}
-
-	platformSeller := billingClient.LegalEntity{
-		Name:    "Eats Platform",
-		Address: addr,
-		TaxID:   &taxID,
-	}
-
-	return platformSeller, nil
-}
-
 func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID CourierUUID, orderUUID OrderUUID) error {
 	order, err := s.orderRepository.OrderByID(ctx, orderUUID)
 	if err != nil {
@@ -169,56 +148,49 @@ func (s *Service) CourierReportDelivery(ctx context.Context, courierUUID Courier
 		return err
 	}
 
-	var lineItems []billingClient.LineItem
+	var lineItems []settlementsClient.LineItem
 	for _, item := range items {
 		itemType, err := lineItemTypeFromCategory(item.Category)
 		if err != nil {
 			return err
 		}
 
-		lineItems = append(lineItems, billingClient.LineItem{
-			Name:       item.Name,
-			Type:       itemType,
-			UnitAmount: shared.NewGrossAmount(item.GrossPrice),
-			Quantity:   item.Quantity,
+		lineItems = append(lineItems, settlementsClient.LineItem{
+			Name:        item.Name,
+			Type:        itemType,
+			GrossAmount: item.GrossPrice,
+			Quantity:    item.Quantity,
 		})
 	}
 
-	lineItems = append(lineItems, billingClient.LineItem{
-		Name:       "Delivery",
-		Type:       shared.LineItemTypeDelivery,
-		UnitAmount: shared.NewGrossAmount(order.DeliveryFeeGross),
-		Quantity:   1,
+	lineItems = append(lineItems, settlementsClient.LineItem{
+		Name:        "Delivery",
+		Type:        shared.LineItemTypeDelivery,
+		GrossAmount: order.DeliveryFeeGross,
+		Quantity:    1,
 	})
 
-	lineItems = append(lineItems, billingClient.LineItem{
-		Name:       "Service Fee",
-		Type:       shared.LineItemTypeService,
-		UnitAmount: shared.NewGrossAmount(order.ServiceFeeGross),
-		Quantity:   1,
+	lineItems = append(lineItems, settlementsClient.LineItem{
+		Name:        "Service Fee",
+		Type:        shared.LineItemTypeService,
+		GrossAmount: order.ServiceFeeGross,
+		Quantity:    1,
 	})
-
-	orderUUIDStr := orderUUID.String()
-
-	platformLegalEntity, err := newPlatformLegalEntity()
-	if err != nil {
-		return err
-	}
 
 	// this is idempotent operation
-	err = s.modules.IssueReceipt(ctx, billingClient.IssueReceiptRequest{
-		ExternalReference: &orderUUIDStr,
-		IssueDate:         time.Now(),
-		Currency:          order.Currency,
-		Seller:            platformLegalEntity,
-		Buyer: billingClient.LegalEntity{
-			Name:    customer.Name,
-			Address: customer.Address,
-		},
-		LineItems: lineItems,
+	err = s.modules.StartSettlement(ctx, settlementsClient.StartSettlementRequest{
+		OrderUUID:       orderUUID.UUID,
+		RestaurantUUID:  order.RestaurantUUID.UUID,
+		CourierUUID:     order.CourierUUID.UUID,
+		Currency:        order.Currency,
+		CustomerName:    customer.Name,
+		CustomerAddress: customer.Address,
+		LineItems:       lineItems,
+		TotalAmount:     order.TotalAmountGross,
+		OrderedAt:       order.OrderedAt,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to issue receipt: %w", err)
+		return fmt.Errorf("failed to start settlement: %w", err)
 	}
 
 	return s.orderRepository.UpdateOrder(

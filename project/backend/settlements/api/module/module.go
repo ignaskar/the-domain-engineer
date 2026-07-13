@@ -2,11 +2,10 @@ package module
 
 import (
 	"context"
-	"errors"
-
 	"eats/backend/settlements/api/module/client"
 	"eats/backend/settlements/app/command"
 	"eats/backend/settlements/app/models"
+	"eats/backend/settlements/domain"
 )
 
 type Settlements struct {
@@ -29,9 +28,16 @@ func New(commandHandler *command.Handlers, legalEntityRepository models.LegalEnt
 }
 
 func (s Settlements) StartSettlement(ctx context.Context, cmd client.StartSettlementRequest) error {
-	return errors.New("not implemented")
+	return s.commandHandler.StartSettlement(ctx, cmd)
 }
 
 func (s Settlements) GetPlatformEntity(ctx context.Context, req client.GetPlatformEntityRequest) (client.GetPlatformEntityResponse, error) {
-	return client.GetPlatformEntityResponse{}, errors.New("not implemented")
+	p, err := s.legalEntityRepository.PartnerByUUID(ctx, domain.LegalEntityUUID{req.PartnerUUID})
+	if err != nil {
+		return client.GetPlatformEntityResponse{}, err
+	}
+
+	return client.GetPlatformEntityResponse{
+		PlatformUUID: p.PlatformEntityUUID.UUID,
+	}, nil
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	settlementsClient "eats/backend/settlements/api/module/client"
 	"errors"
 	"fmt"
 	"time"
@@ -428,6 +429,13 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrder) (Order, error)
 		return Order{}, fmt.Errorf("error creating order from quote: %w", err)
 	}
 
+	legalEntity, err := s.modules.GetPlatformEntity(ctx, settlementsClient.GetPlatformEntityRequest{
+		PartnerUUID: quote.RestaurantUUID.UUID,
+	})
+	if err != nil {
+		return Order{}, fmt.Errorf("error getting legal entity: %w", err)
+	}
+
 	// CapturePayment is called outside the transaction.
 	// CapturePayment is idempotent (nonce ensures single charge), so retrying the whole
 	// PlaceOrder is safe for the payment side.
@@ -435,7 +443,7 @@ func (s *Service) PlaceOrder(ctx context.Context, req PlaceOrder) (Order, error)
 	// If CapturePayment succeeds but SaveOrder fails, the payment was captured but the order
 	// is not saved. A reconciliation process is needed to handle this edge case.
 	// An event-driven approach would be the proper solution. See https://threedots.tech/event-driven/
-	err = s.paymentsService.CapturePayment(ctx, req.PaymentNonce, quote.TotalAmountGross, quote.RestaurantUUID.String())
+	err = s.paymentsService.CapturePayment(ctx, req.PaymentNonce, quote.TotalAmountGross, legalEntity.PlatformUUID.String())
 	if err != nil {
 		return Order{}, fmt.Errorf("error charging card for order: %w", err)
 	}

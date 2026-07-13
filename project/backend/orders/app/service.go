@@ -7,12 +7,14 @@ import (
 
 	billingModule "eats/backend/billing/api/module/client"
 	deliveryModule "eats/backend/delivery/api/module/client"
+	settlementsModule "eats/backend/settlements/api/module/client"
 )
 
 type ModulesContract interface {
 	CalculateDeliveryFee(ctx context.Context, req deliveryModule.CalculateDeliveryFeeRequest) (deliveryModule.CalculateDeliveryFeeResponse, error)
-	IssueReceipt(ctx context.Context, req billingModule.IssueReceiptRequest) error
 	CalculateTaxes(ctx context.Context, req billingModule.CalculateTaxesRequest) (billingModule.CalculateTaxesResponse, error)
+	StartSettlement(ctx context.Context, cmd settlementsModule.StartSettlementRequest) error
+	GetPlatformEntity(ctx context.Context, req settlementsModule.GetPlatformEntityRequest) (settlementsModule.GetPlatformEntityResponse, error)
 }
 
 type PaymentsService interface {
