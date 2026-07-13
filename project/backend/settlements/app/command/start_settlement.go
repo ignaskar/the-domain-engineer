@@ -3,13 +3,11 @@ package command
 import (
 	"context"
 	billingClient "eats/backend/billing/api/module/client"
-	"eats/backend/common"
 	"eats/backend/common/log"
 	"eats/backend/common/shared"
 	settlementsClient "eats/backend/settlements/api/module/client"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/domain"
-	"fmt"
 	"time"
 
 	settlementsModule "eats/backend/settlements/api/module/client"
@@ -25,9 +23,9 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 		return err
 	}
 
-	externalRef := common.ToPtr(fmt.Sprintf("receipt-%s", cmd.OrderUUID))
+	externalRef := cmd.OrderUUID.String()
 	req := billingClient.IssueReceiptRequest{
-		ExternalReference: externalRef,
+		ExternalReference: &externalRef,
 		IssueDate:         time.Now(),
 		Currency:          cmd.Currency,
 		Seller:            toBillingLegalEntity(le),
@@ -49,7 +47,7 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 }
 
 func toBillingLineItems(lis []settlementsClient.LineItem) []billingClient.LineItem {
-	out := make([]billingClient.LineItem, len(lis))
+	out := make([]billingClient.LineItem, 0, len(lis))
 	for _, li := range lis {
 		out = append(out, toBillingLineItem(li))
 	}
