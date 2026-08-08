@@ -38,37 +38,23 @@ func (o *OrderRepository) SaveOrder(ctx context.Context, order models.Order) err
 			return fmt.Errorf("error saving order: %w", err)
 		}
 
-		err = queries.SaveOrderBreakdown(ctx, dbmodels.SaveOrderBreakdownParams{
-			OrderUuid:     order.UUID(),
-			BreakdownType: dbmodels.SettlementsBreakdownTypeDelivery,
-			NetAmount:     order.DeliveryBreakdown().Net,
-			TaxAmount:     order.DeliveryBreakdown().Tax,
-			GrossAmount:   order.DeliveryBreakdown().Gross,
-		})
-		if err != nil {
-			return fmt.Errorf("error saving order delivery breakdown: %w", err)
+		breakdowns := map[dbmodels.SettlementsBreakdownType]models.AmountBreakdown{
+			dbmodels.SettlementsBreakdownTypeItems:    order.ItemsBreakdown(),
+			dbmodels.SettlementsBreakdownTypeDelivery: order.DeliveryBreakdown(),
+			dbmodels.SettlementsBreakdownTypeTotal:    order.TotalBreakdown(),
 		}
 
-		err = queries.SaveOrderBreakdown(ctx, dbmodels.SaveOrderBreakdownParams{
-			OrderUuid:     order.UUID(),
-			BreakdownType: dbmodels.SettlementsBreakdownTypeItems,
-			NetAmount:     order.ItemsBreakdown().Net,
-			TaxAmount:     order.ItemsBreakdown().Tax,
-			GrossAmount:   order.ItemsBreakdown().Gross,
-		})
-		if err != nil {
-			return fmt.Errorf("error saving order items breakdown: %w", err)
-		}
-
-		err = queries.SaveOrderBreakdown(ctx, dbmodels.SaveOrderBreakdownParams{
-			OrderUuid:     order.UUID(),
-			BreakdownType: dbmodels.SettlementsBreakdownTypeTotal,
-			NetAmount:     order.TotalBreakdown().Net,
-			TaxAmount:     order.TotalBreakdown().Tax,
-			GrossAmount:   order.TotalBreakdown().Gross,
-		})
-		if err != nil {
-			return fmt.Errorf("error saving order total breakdown: %w", err)
+		for brType, breakdown := range breakdowns {
+			err := queries.SaveOrderBreakdown(ctx, dbmodels.SaveOrderBreakdownParams{
+				OrderUuid:     order.UUID(),
+				BreakdownType: brType,
+				NetAmount:     breakdown.Net,
+				TaxAmount:     breakdown.Tax,
+				GrossAmount:   breakdown.Gross,
+			})
+			if err != nil {
+				return fmt.Errorf("error saving order breakdown: %w", err)
+			}
 		}
 
 		return nil

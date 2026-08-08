@@ -17,7 +17,11 @@ import (
 
 const saveOrder = `-- name: SaveOrder :exec
 INSERT INTO settlements.orders (order_uuid, restaurant_uuid, courier_uuid, currency, commission_net_amount, ordered_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+VALUES (
+           $1,
+           $2, $3, $4,
+           $5, $6
+)
 ON CONFLICT (order_uuid) DO NOTHING
 `
 
@@ -44,7 +48,10 @@ func (q *Queries) SaveOrder(ctx context.Context, arg SaveOrderParams) error {
 
 const saveOrderBreakdown = `-- name: SaveOrderBreakdown :exec
 INSERT INTO settlements.order_breakdowns (order_uuid, breakdown_type, net_amount, tax_amount, gross_amount)
-VALUES ($1, $2, $3, $4, $5)
+VALUES (
+           $1, $2,
+           $3, $4, $5
+)
 ON CONFLICT (order_uuid, breakdown_type) DO NOTHING
 `
 
