@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"errors"
 	"time"
 
 	"eats/backend/common"
@@ -22,14 +23,43 @@ type BillingCycle struct {
 }
 
 func NewInitialBillingCycle(partnerUUID LegalEntityUUID, partnerType PartnerType) (*BillingCycle, error) {
-	// TODO: validate inputs (zero checks) and return a new BillingCycle with number=1.
-	panic("not implemented")
+	if partnerUUID.IsZero() {
+		return nil, errors.New("partner UUID cannot be empty")
+	}
+	if partnerType.IsZero() {
+		return nil, errors.New("partner type cannot be empty")
+	}
+
+	return &BillingCycle{
+		uuid:        BillingCycleUUID{common.NewUUIDv7()},
+		partnerUUID: partnerUUID,
+		partnerType: partnerType,
+		number:      1,
+		closed:      false,
+		settled:     false,
+		startDate:   time.Now().UTC(),
+		endDate:     nil,
+	}, nil
 }
 
 func NewNextBillingCycle(previous *BillingCycle) (*BillingCycle, error) {
-	// TODO: validate previous is non-nil and closed, then return a new BillingCycle
-	// with number incremented and startDate set to now (UTC).
-	panic("not implemented")
+	if previous == nil {
+		return nil, errors.New("previous billing cycle cannot be empty")
+	}
+	if !previous.Closed() {
+		return nil, errors.New("cannot start a new billing cycle if previous one is not closed")
+	}
+
+	return &BillingCycle{
+		uuid:        BillingCycleUUID{common.NewUUIDv7()},
+		partnerUUID: previous.partnerUUID,
+		partnerType: previous.partnerType,
+		number:      previous.number + 1,
+		closed:      false,
+		settled:     false,
+		startDate:   time.Now().UTC(),
+		endDate:     nil,
+	}, nil
 }
 
 func (bc *BillingCycle) UUID() BillingCycleUUID {
@@ -65,13 +95,27 @@ func (bc *BillingCycle) Settled() bool {
 }
 
 func (bc *BillingCycle) Close() error {
-	// TODO: refuse if already closed; otherwise mark closed and set endDate to now (UTC).
-	panic("not implemented")
+	if bc.closed {
+		return errors.New("billing cycle already closed")
+	}
+
+	bc.closed = true
+	bc.endDate = common.ToPtr(time.Now().UTC())
+
+	return nil
 }
 
 func (bc *BillingCycle) Settle() error {
-	// TODO: refuse if not closed or already settled; otherwise mark settled.
-	panic("not implemented")
+	if !bc.closed {
+		return errors.New("cannot settle an unclosed billing cycle")
+	}
+	if bc.settled {
+		return errors.New("billing cycle already settled")
+	}
+
+	bc.settled = true
+
+	return nil
 }
 
 func UnmarshalBillingCycle(
