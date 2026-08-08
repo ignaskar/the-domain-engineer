@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/shopspring/decimal"
@@ -27,9 +28,15 @@ type OrderRepository interface {
 // when StartSettlement runs: the parties involved, the receipt totals, and
 // the platform commission.
 type Order struct {
-	// TODO: add fields for orderUUID, restaurantUUID, courierUUID, currency,
-	// itemsBreakdown, deliveryBreakdown, totalBreakdown, commissionNetAmount,
-	// and orderedAt.
+	orderUUID           OrderUUID
+	restaurantUUID      domain.LegalEntityUUID
+	courierUUID         domain.LegalEntityUUID
+	currency            shared.Currency
+	itemsBreakdown      AmountBreakdown
+	deliveryBreakdown   AmountBreakdown
+	totalBreakdown      AmountBreakdown
+	commissionNetAmount decimal.Decimal
+	orderedAt           time.Time
 }
 
 // AmountBreakdown holds a triple of (net, tax, gross) amounts.
@@ -40,13 +47,19 @@ type AmountBreakdown struct {
 }
 
 func NewAmountBreakdown() AmountBreakdown {
-	// TODO: return a zero-valued breakdown.
-	panic("not implemented")
+	return AmountBreakdown{
+		Net:   decimal.Zero,
+		Tax:   decimal.Zero,
+		Gross: decimal.Zero,
+	}
 }
 
 func (o AmountBreakdown) Add(net, tax, gross decimal.Decimal) AmountBreakdown {
-	// TODO: return a new AmountBreakdown with the amounts added. Don't mutate o.
-	panic("not implemented")
+	return AmountBreakdown{
+		Net:   o.Net.Add(net),
+		Tax:   o.Tax.Add(tax),
+		Gross: o.Gross.Add(gross),
+	}
 }
 
 func NewOrder(
@@ -57,22 +70,85 @@ func NewOrder(
 	orderedAt time.Time,
 	receipt client.DocumentReadModel,
 ) (Order, error) {
-	// TODO: implement.
-	// The implementation must:
-	//   - Reject zero values for orderUUID, restaurantUUID, courierUUID, currency,
-	//     and orderedAt.
-	//   - Aggregate Food and Beverage line items into itemsBreakdown.
-	//   - Aggregate Delivery line items into deliveryBreakdown.
-	//   - Set totalBreakdown from receipt.NetTotal/TaxTotal/GrossTotal.
-	//   - Compute commissionNetAmount as itemsBreakdown.Net * CommissionRate,
-	//     rounded to 2 decimal places.
-	panic("not implemented")
+	if orderUUID.IsZero() {
+		return Order{}, errors.New("orderUUID cannot be empty")
+	}
+	if restaurantUUID.IsZero() {
+		return Order{}, errors.New("restaurantUUID cannot be empty")
+	}
+	if courierUUID.IsZero() {
+		return Order{}, errors.New("courierUUID cannot be empty")
+	}
+	if currency.IsZero() {
+		return Order{}, errors.New("currency cannot be empty")
+	}
+	if orderedAt.IsZero() {
+		return Order{}, errors.New("orderedAt cannot be empty")
+	}
+
+	itemsBreakdown := NewAmountBreakdown()
+	deliveryBreakdown := NewAmountBreakdown()
+	for _, item := range receipt.LineItems {
+		switch item.Type {
+		case shared.LineItemTypeFood, shared.LineItemTypeBeverage:
+			itemsBreakdown = itemsBreakdown.Add(item.NetAmount, item.TaxAmount, item.GrossAmount)
+		case shared.LineItemTypeDelivery:
+			deliveryBreakdown = deliveryBreakdown.Add(item.NetAmount, item.TaxAmount, item.GrossAmount)
+		}
+	}
+
+	totalBreakdown := NewAmountBreakdown()
+	totalBreakdown = totalBreakdown.Add(receipt.NetTotal, receipt.TaxTotal, receipt.GrossTotal)
+	commissionNetAmount := itemsBreakdown.Net.Mul(CommissionRate).Round(2)
+
+	return Order{
+		orderUUID:           orderUUID,
+		restaurantUUID:      restaurantUUID,
+		courierUUID:         courierUUID,
+		currency:            currency,
+		itemsBreakdown:      itemsBreakdown,
+		deliveryBreakdown:   deliveryBreakdown,
+		totalBreakdown:      totalBreakdown,
+		commissionNetAmount: commissionNetAmount,
+		orderedAt:           orderedAt,
+	}, nil
 }
 
 // TODO: add getter for each field (UUID, RestaurantUUID, CourierUUID,
 // Currency, ItemsBreakdown, DeliveryBreakdown, TotalBreakdown,
 // CommissionNetAmount, OrderedAt) plus a ShortID helper that returns the
 // last 8 chars of the orderUUID.
+func (o Order) UUID() OrderUUID {
+	return o.orderUUID
+}
+func (o Order) RestaurantUUID() domain.LegalEntityUUID {
+	return o.restaurantUUID
+}
+func (o Order) CourierUUID() domain.LegalEntityUUID {
+	return o.courierUUID
+}
+
+func (o Order) Currency() shared.Currency {
+	return o.currency
+}
+func (o Order) ItemsBreakdown() AmountBreakdown {
+	return o.itemsBreakdown
+}
+func (o Order) DeliveryBreakdown() AmountBreakdown {
+	return o.deliveryBreakdown
+}
+func (o Order) TotalBreakdown() AmountBreakdown {
+	return o.totalBreakdown
+}
+func (o Order) CommissionNetAmount() decimal.Decimal {
+	return o.commissionNetAmount
+}
+func (o Order) OrderedAt() time.Time {
+	return o.orderedAt
+}
+func (o Order) ShortID() string {
+	return o.orderUUID.String()[len(o.orderUUID.String())-8:]
+}
 
 // UnmarshalOrder rebuilds an Order from already-validated state.
 func UnmarshalOrder(
