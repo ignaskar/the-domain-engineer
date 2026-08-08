@@ -30,3 +30,6 @@ func (h *Handlers) IssueReceipt(ctx context.Context, cmd IssueReceipt) (domain.D
 		},
 	)
 }
+
+// TODO: add an IssueInvoice command and handler.
+// Mirror the IssueReceipt shape, using NewInvoiceBuilder and DocumentSeriesInvoice.

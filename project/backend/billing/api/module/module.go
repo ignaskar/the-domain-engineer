@@ -33,15 +33,15 @@ func New(
 	}
 }
 
-func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptRequest) error {
+func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptRequest) (client.DocumentReadModel, error) {
 	buyer, err := newDomainLegalEntityFromContract(req.Buyer)
 	if err != nil {
-		return fmt.Errorf("could not create buyer domain legal entity: %w", err)
+		return client.DocumentReadModel{}, fmt.Errorf("could not create buyer domain legal entity: %w", err)
 	}
 
 	seller, err := newDomainLegalEntityFromContract(req.Seller)
 	if err != nil {
-		return fmt.Errorf("could not create seller domain legal entity: %w", err)
+		return client.DocumentReadModel{}, fmt.Errorf("could not create seller domain legal entity: %w", err)
 	}
 
 	lineItems := make([]domain.NewLineItemData, 0, len(req.LineItems))
@@ -55,7 +55,7 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 		lineItems = append(lineItems, domainLineItem)
 	}
 
-	_, err = b.commandHandlers.IssueReceipt(ctx, command.IssueReceipt{
+	uuid, err := b.commandHandlers.IssueReceipt(ctx, command.IssueReceipt{
 		DocumentData: domain.NewDocumentData{
 			ExternalReference: req.ExternalReference,
 			IssueDate:         req.IssueDate,
@@ -66,11 +66,20 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 		},
 	})
 	if err != nil {
-		return err
+		return client.DocumentReadModel{}, err
 	}
 
-	return nil
+	doc, err := b.queryHandlers.GetDocumentByUUID(ctx, query.GetDocumentByUUID{
+		DocumentUUID: uuid,
+	})
+	if err != nil {
+		return client.DocumentReadModel{}, fmt.Errorf("error getting document: %w", err)
+	}
+
+	return newDocumentReadModel(doc), nil
 }
+
+// TODO: add IssueInvoice. Follow the same pattern as IssueReceipt.
 
 func (b *Billing) CalculateTaxes(ctx context.Context, req client.CalculateTaxesRequest) (client.CalculateTaxesResponse, error) {
 	return b.queryHandlers.CalculateTaxes(ctx, req)
@@ -98,4 +107,27 @@ func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntit
 	}
 
 	return &domainLe, nil
+}
+
+func newDocumentReadModel(doc *domain.Document) client.DocumentReadModel {
+	var lineItems []client.LineItemReadModel
+	for _, l := range doc.LineItems() {
+		lineItems = append(lineItems, client.LineItemReadModel{
+			Name:        l.Name(),
+			Type:        l.LineItemType(),
+			Quantity:    l.Quantity(),
+			NetAmount:   l.PriceBreakdown().NetAmount(),
+			TaxAmount:   l.PriceBreakdown().TaxAmount(),
+			GrossAmount: l.PriceBreakdown().GrossAmount(),
+		})
+	}
+
+	return client.DocumentReadModel{
+		UUID:           doc.UUID().String(),
+		DocumentNumber: doc.DocumentNumber().String(),
+		LineItems:      lineItems,
+		NetTotal:       doc.Summary().NetAmount(),
+		TaxTotal:       doc.Summary().TaxAmount(),
+		GrossTotal:     doc.Summary().GrossAmount(),
+	}
 }
