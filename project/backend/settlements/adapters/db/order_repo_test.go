@@ -217,10 +217,14 @@ func setupRestaurantAndCourier(t *testing.T, ctx context.Context, pool *pgxpool.
 	require.NoError(t, repo.SavePlatformEntity(ctx, platform))
 
 	restaurant := newOrderTestPartner(t, "Mama's Pizzeria", models.PlatformEntityUUID{LegalEntityUUID: platform.UUID})
-	require.NoError(t, repo.SavePartner(ctx, restaurant))
+	restaurantBillingCycle, err := domain.NewInitialBillingCycle(restaurant.LegalEntity.UUID, domain.PartnerTypeRestaurant)
+	require.NoError(t, err)
+	require.NoError(t, repo.SavePartner(ctx, restaurant, restaurantBillingCycle))
 
 	courier := newOrderTestPartner(t, "Speedy Couriers", models.PlatformEntityUUID{LegalEntityUUID: platform.UUID})
-	require.NoError(t, repo.SavePartner(ctx, courier))
+	courierBillingCycle, err := domain.NewInitialBillingCycle(courier.LegalEntity.UUID, domain.PartnerTypeCourier)
+	require.NoError(t, err)
+	require.NoError(t, repo.SavePartner(ctx, courier, courierBillingCycle))
 
 	return restaurant.LegalEntity.UUID, courier.LegalEntity.UUID
 }
