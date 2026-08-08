@@ -20,6 +20,7 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 	}
 
 	restaurantUUID := domain.LegalEntityUUID{cmd.RestaurantUUID}
+	courierUUID := domain.LegalEntityUUID{cmd.CourierUUID}
 
 	restaurant, err := h.legalEntityRepository.LegalEntityByUUID(ctx, restaurantUUID)
 	if err != nil {
@@ -57,8 +58,6 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 		return fmt.Errorf("could not issue receipt: %w", err)
 	}
 
-	courierUUID := domain.LegalEntityUUID{cmd.CourierUUID}
-
 	order, err := models.NewOrder(
 		models.OrderUUID{cmd.OrderUUID},
 		restaurantUUID,
@@ -68,12 +67,12 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 		receipt,
 	)
 	if err != nil {
-		return fmt.Errorf("could not create order: %w", err)
+		return fmt.Errorf("error creating order: %w", err)
 	}
 
 	err = h.orderRepository.SaveOrder(ctx, order)
 	if err != nil {
-		return fmt.Errorf("could not save order: %w", err)
+		return fmt.Errorf("error saving order: %w", err)
 	}
 
 	log.FromContext(ctx).Info(

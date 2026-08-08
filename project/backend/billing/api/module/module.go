@@ -73,7 +73,7 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 		DocumentUUID: uuid,
 	})
 	if err != nil {
-		return client.DocumentReadModel{}, err
+		return client.DocumentReadModel{}, fmt.Errorf("error getting document: %w", err)
 	}
 
 	return newDocumentReadModel(doc), nil
@@ -81,29 +81,6 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 
 func (b *Billing) CalculateTaxes(ctx context.Context, req client.CalculateTaxesRequest) (client.CalculateTaxesResponse, error) {
 	return b.queryHandlers.CalculateTaxes(ctx, req)
-}
-
-func newDocumentReadModel(doc *domain.Document) client.DocumentReadModel {
-	var lineItems []client.LineItemReadModel
-	for _, lineItem := range doc.LineItems() {
-		lineItems = append(lineItems, client.LineItemReadModel{
-			Name:        lineItem.Name(),
-			Type:        lineItem.LineItemType(),
-			Quantity:    lineItem.Quantity(),
-			NetAmount:   lineItem.PriceBreakdown().NetAmount(),
-			TaxAmount:   lineItem.PriceBreakdown().TaxAmount(),
-			GrossAmount: lineItem.PriceBreakdown().GrossAmount(),
-		})
-	}
-
-	return client.DocumentReadModel{
-		UUID:           doc.UUID().String(),
-		DocumentNumber: doc.DocumentNumber().String(),
-		LineItems:      lineItems,
-		NetTotal:       doc.Summary().NetAmount(),
-		TaxTotal:       doc.Summary().TaxAmount(),
-		GrossTotal:     doc.Summary().GrossAmount(),
-	}
 }
 
 func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntity, error) {
@@ -128,4 +105,27 @@ func newDomainLegalEntityFromContract(le client.LegalEntity) (*domain.LegalEntit
 	}
 
 	return &domainLe, nil
+}
+
+func newDocumentReadModel(doc *domain.Document) client.DocumentReadModel {
+	var lineItems []client.LineItemReadModel
+	for _, l := range doc.LineItems() {
+		lineItems = append(lineItems, client.LineItemReadModel{
+			Name:        l.Name(),
+			Type:        l.LineItemType(),
+			Quantity:    l.Quantity(),
+			NetAmount:   l.PriceBreakdown().NetAmount(),
+			TaxAmount:   l.PriceBreakdown().TaxAmount(),
+			GrossAmount: l.PriceBreakdown().GrossAmount(),
+		})
+	}
+
+	return client.DocumentReadModel{
+		UUID:           doc.UUID().String(),
+		DocumentNumber: doc.DocumentNumber().String(),
+		LineItems:      lineItems,
+		NetTotal:       doc.Summary().NetAmount(),
+		TaxTotal:       doc.Summary().TaxAmount(),
+		GrossTotal:     doc.Summary().GrossAmount(),
+	}
 }
