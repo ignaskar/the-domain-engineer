@@ -12,6 +12,7 @@ import (
 type Billing interface {
 	CalculateTaxes(ctx context.Context, req CalculateTaxesRequest) (CalculateTaxesResponse, error)
 	IssueReceipt(ctx context.Context, req IssueReceiptRequest) (DocumentReadModel, error)
+	// TODO: add IssueInvoice(ctx, req IssueInvoiceRequest) (DocumentReadModel, error).
 }
 
 type CalculateTaxesRequest struct {
@@ -46,6 +47,8 @@ type IssueReceiptRequest struct {
 	Buyer     LegalEntity
 	LineItems []LineItem
 }
+
+// TODO: add IssueInvoiceRequest.
 
 type LegalEntity struct {
 	Name    string

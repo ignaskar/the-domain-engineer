@@ -17,10 +17,14 @@ type DocumentType struct {
 type DocumentTypeValues string
 
 func (DocumentTypeValues) Values() []string {
+	// TODO: also accept "invoice".
 	return []string{"receipt"}
 }
 
-var DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
+var (
+	DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
+	// TODO: declare DocumentTypeInvoice using the same MustEnum helper.
+)
 
 type DocumentFactory struct {
 	taxRateProvider TaxRateProvider
@@ -85,6 +89,9 @@ func (f DocumentFactory) NewReceiptBuilder(ctx context.Context, data NewDocument
 
 	return f.newDocumentBuilder(ctx, DocumentTypeReceipt, data)
 }
+
+// TODO: add NewInvoiceBuilder. Mirror NewReceiptBuilder, but invoices don't need
+// the buyer-tax-id check (invoices are issued to entities with tax IDs).
 
 func (f DocumentFactory) newDocumentBuilder(
 	ctx context.Context,

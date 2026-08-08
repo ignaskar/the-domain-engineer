@@ -79,6 +79,8 @@ func (b *Billing) IssueReceipt(ctx context.Context, req client.IssueReceiptReque
 	return newDocumentReadModel(doc), nil
 }
 
+// TODO: add IssueInvoice. Follow the same pattern as IssueReceipt.
+
 func (b *Billing) CalculateTaxes(ctx context.Context, req client.CalculateTaxesRequest) (client.CalculateTaxesResponse, error) {
 	return b.queryHandlers.CalculateTaxes(ctx, req)
 }
