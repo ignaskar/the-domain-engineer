@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/domain"
 )
 
@@ -42,5 +41,4 @@ func (h *Handlers) BillingCycleByPartner(ctx context.Context, query BillingCycle
 
 type BillingCycleRepository interface {
 	BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]BillingCycleReadModel, error)
-	AddOrderToCurrentBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID, orderUUID models.OrderUUID) error
 }

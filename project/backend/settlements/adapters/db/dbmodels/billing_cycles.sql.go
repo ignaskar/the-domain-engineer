@@ -17,7 +17,9 @@ import (
 
 const addOrderToBillingCycle = `-- name: AddOrderToBillingCycle :exec
 INSERT INTO settlements.billing_cycle_orders (billing_cycle_uuid, order_uuid)
-VALUES ($1, $2)
+VALUES (
+           $1, $2
+)
 ON CONFLICT (billing_cycle_uuid, order_uuid) DO NOTHING
 `
 
@@ -68,10 +70,8 @@ func (q *Queries) BillingCyclesByPartnerUUID(ctx context.Context, partnerUuid do
 }
 
 const currentBillingCycle = `-- name: CurrentBillingCycle :one
-SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date
-FROM settlements.billing_cycles
-WHERE partner_uuid = $1
-AND closed = false
+SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date FROM settlements.billing_cycles
+WHERE partner_uuid = $1 AND closed = false
 LIMIT 1
 `
 
@@ -129,7 +129,7 @@ SELECT EXISTS(
     SELECT 1 FROM settlements.billing_cycle_orders bco
     INNER JOIN settlements.billing_cycles bc ON bco.billing_cycle_uuid = bc.billing_cycle_uuid
     WHERE bco.order_uuid = $1
-        AND bc.partner_uuid = $2
+      AND bc.partner_uuid = $2
 )
 `
 
