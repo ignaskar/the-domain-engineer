@@ -49,9 +49,11 @@ func (m *Module) Init(ctx context.Context) error {
 		return err
 	}
 
+	orderRepository := db.NewOrderRepository(m.pgxDb)
 	m.legalEntityRepository = db.NewLegalEntityRepository(m.pgxDb)
 
 	m.commandHandlers = command.NewHandlers(
+		orderRepository,
 		m.legalEntityRepository,
 		m.modules,
 	)

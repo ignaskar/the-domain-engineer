@@ -3,22 +3,63 @@ package command
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"eats/backend/billing/api/module/client"
+	"eats/backend/common/log"
+	"eats/backend/common/shared"
 	settlementsModule "eats/backend/settlements/api/module/client"
+	"eats/backend/settlements/domain"
 )
 
 func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.StartSettlementRequest) error {
-	// TODO: implement
-	// 1. Validate the request via cmd.Validate(). Fail fast on invalid input.
-	// 2. Fetch the restaurant legal entity by UUID via h.legalEntityRepository.LegalEntityByUUID.
-	// 3. Build a billing IssueReceiptRequest:
-	//    - ExternalReference: derive from cmd.OrderUUID (e.g., "receipt-<orderUUID>").
-	//    - IssueDate: time.Now().
-	//    - Currency: cmd.Currency.
-	//    - Seller: built from the restaurant's BusinessName, Address, TaxID.
-	//    - Buyer: cmd.CustomerName, cmd.CustomerAddress.
-	//    - LineItems: convert each cmd.LineItems entry into client.LineItem.
-	// 4. Call h.modules.IssueReceipt.
-	// 5. Log on success.
-	return fmt.Errorf("not implemented")
+	err := cmd.Validate()
+	if err != nil {
+		return err
+	}
+
+	restaurantUUID := domain.LegalEntityUUID{cmd.RestaurantUUID}
+
+	restaurant, err := h.legalEntityRepository.LegalEntityByUUID(ctx, restaurantUUID)
+	if err != nil {
+		return fmt.Errorf("could not get restaurant entity: %w", err)
+	}
+
+	var lineItems []client.LineItem
+	for _, l := range cmd.LineItems {
+		lineItems = append(lineItems, client.LineItem{
+			Name:       l.Name,
+			Type:       l.Type,
+			Quantity:   l.Quantity,
+			UnitAmount: shared.NewGrossAmount(l.GrossAmount),
+		})
+	}
+
+	externalReference := cmd.OrderUUID.String()
+
+	err = h.modules.IssueReceipt(ctx, client.IssueReceiptRequest{
+		ExternalReference: &externalReference,
+		IssueDate:         time.Now(),
+		Currency:          cmd.Currency,
+		Seller: client.LegalEntity{
+			Name:    restaurant.BusinessName,
+			Address: restaurant.Address,
+			TaxID:   &restaurant.TaxID,
+		},
+		Buyer: client.LegalEntity{
+			Name:    cmd.CustomerName,
+			Address: cmd.CustomerAddress,
+		},
+		LineItems: lineItems,
+	})
+	if err != nil {
+		return fmt.Errorf("could not issue receipt: %w", err)
+	}
+
+	log.FromContext(ctx).Info(
+		"Settlement started",
+		"order", cmd.OrderUUID,
+	)
+
+	return nil
 }
