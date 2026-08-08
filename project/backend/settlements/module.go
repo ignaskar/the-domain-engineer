@@ -13,6 +13,7 @@ import (
 	"eats/backend/settlements/api/http"
 	settlementsModule "eats/backend/settlements/api/module"
 	"eats/backend/settlements/app/command"
+	"eats/backend/settlements/app/query"
 )
 
 type Module struct {
@@ -21,6 +22,7 @@ type Module struct {
 	modules *contracts.Contracts
 
 	commandHandlers       *command.Handlers
+	queryHandlers         *query.Handlers
 	legalEntityRepository *db.LegalEntityRepository
 }
 
@@ -49,6 +51,7 @@ func (m *Module) Init(ctx context.Context) error {
 		return err
 	}
 
+	billingCycleRepository := db.NewBillingCycleRepository(m.pgxDb)
 	orderRepository := db.NewOrderRepository(m.pgxDb)
 	m.legalEntityRepository = db.NewLegalEntityRepository(m.pgxDb)
 
@@ -57,6 +60,8 @@ func (m *Module) Init(ctx context.Context) error {
 		m.legalEntityRepository,
 		m.modules,
 	)
+
+	m.queryHandlers = query.NewHandlers(billingCycleRepository)
 
 	return nil
 }
@@ -67,5 +72,5 @@ func (m *Module) RegisterContracts(ctx context.Context, contracts *contracts.Con
 }
 
 func (m *Module) RegisterHttp(ctx context.Context, e common.EchoRouter) error {
-	return http.Register(e, m.commandHandlers)
+	return http.Register(e, m.commandHandlers, m.queryHandlers)
 }
