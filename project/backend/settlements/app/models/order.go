@@ -28,15 +28,18 @@ type OrderRepository interface {
 // when StartSettlement runs: the parties involved, the receipt totals, and
 // the platform commission.
 type Order struct {
-	orderUUID           OrderUUID
-	restaurantUUID      domain.LegalEntityUUID
-	courierUUID         domain.LegalEntityUUID
-	currency            shared.Currency
-	itemsBreakdown      AmountBreakdown
-	deliveryBreakdown   AmountBreakdown
-	totalBreakdown      AmountBreakdown
+	orderUUID      OrderUUID
+	restaurantUUID domain.LegalEntityUUID
+	courierUUID    domain.LegalEntityUUID
+	currency       shared.Currency
+
+	itemsBreakdown    AmountBreakdown
+	deliveryBreakdown AmountBreakdown
+	totalBreakdown    AmountBreakdown
+
 	commissionNetAmount decimal.Decimal
-	orderedAt           time.Time
+
+	orderedAt time.Time
 }
 
 // AmountBreakdown holds a triple of (net, tax, gross) amounts.
@@ -71,35 +74,43 @@ func NewOrder(
 	receipt client.DocumentReadModel,
 ) (Order, error) {
 	if orderUUID.IsZero() {
-		return Order{}, errors.New("orderUUID cannot be empty")
+		return Order{}, errors.New("order uuid is zero")
 	}
 	if restaurantUUID.IsZero() {
-		return Order{}, errors.New("restaurantUUID cannot be empty")
+		return Order{}, errors.New("restaurant uuid is zero")
 	}
 	if courierUUID.IsZero() {
-		return Order{}, errors.New("courierUUID cannot be empty")
+		return Order{}, errors.New("courier uuid is zero")
 	}
 	if currency.IsZero() {
-		return Order{}, errors.New("currency cannot be empty")
+		return Order{}, errors.New("currency is zero")
 	}
 	if orderedAt.IsZero() {
-		return Order{}, errors.New("orderedAt cannot be empty")
+		return Order{}, errors.New("ordered at is zero")
 	}
 
-	itemsBreakdown := NewAmountBreakdown()
 	deliveryBreakdown := NewAmountBreakdown()
-	for _, item := range receipt.LineItems {
-		switch item.Type {
-		case shared.LineItemTypeFood, shared.LineItemTypeBeverage:
-			itemsBreakdown = itemsBreakdown.Add(item.NetAmount, item.TaxAmount, item.GrossAmount)
+	itemsBreakdown := NewAmountBreakdown()
+
+	for _, lineItem := range receipt.LineItems {
+		switch lineItem.Type {
 		case shared.LineItemTypeDelivery:
-			deliveryBreakdown = deliveryBreakdown.Add(item.NetAmount, item.TaxAmount, item.GrossAmount)
+			deliveryBreakdown = deliveryBreakdown.Add(lineItem.NetAmount, lineItem.TaxAmount, lineItem.GrossAmount)
+		case shared.LineItemTypeFood:
+			fallthrough
+		case shared.LineItemTypeBeverage:
+			itemsBreakdown = itemsBreakdown.Add(lineItem.NetAmount, lineItem.TaxAmount, lineItem.GrossAmount)
 		}
 	}
 
-	totalBreakdown := NewAmountBreakdown()
-	totalBreakdown = totalBreakdown.Add(receipt.NetTotal, receipt.TaxTotal, receipt.GrossTotal)
 	commissionNetAmount := itemsBreakdown.Net.Mul(CommissionRate).Round(2)
+
+	totalBreakdown := NewAmountBreakdown()
+	totalBreakdown = totalBreakdown.Add(
+		receipt.NetTotal,
+		receipt.TaxTotal,
+		receipt.GrossTotal,
+	)
 
 	return Order{
 		orderUUID:           orderUUID,
@@ -114,16 +125,18 @@ func NewOrder(
 	}, nil
 }
 
-// TODO: add getter for each field (UUID, RestaurantUUID, CourierUUID,
-// Currency, ItemsBreakdown, DeliveryBreakdown, TotalBreakdown,
-// CommissionNetAmount, OrderedAt) plus a ShortID helper that returns the
-// last 8 chars of the orderUUID.
 func (o Order) UUID() OrderUUID {
 	return o.orderUUID
 }
+
+func (o Order) ShortID() string {
+	return o.orderUUID.String()[len(o.orderUUID.String())-8:]
+}
+
 func (o Order) RestaurantUUID() domain.LegalEntityUUID {
 	return o.restaurantUUID
 }
+
 func (o Order) CourierUUID() domain.LegalEntityUUID {
 	return o.courierUUID
 }
@@ -131,23 +144,25 @@ func (o Order) CourierUUID() domain.LegalEntityUUID {
 func (o Order) Currency() shared.Currency {
 	return o.currency
 }
+
 func (o Order) ItemsBreakdown() AmountBreakdown {
 	return o.itemsBreakdown
 }
+
 func (o Order) DeliveryBreakdown() AmountBreakdown {
 	return o.deliveryBreakdown
 }
+
 func (o Order) TotalBreakdown() AmountBreakdown {
 	return o.totalBreakdown
 }
+
 func (o Order) CommissionNetAmount() decimal.Decimal {
 	return o.commissionNetAmount
 }
+
 func (o Order) OrderedAt() time.Time {
 	return o.orderedAt
-}
-func (o Order) ShortID() string {
-	return o.orderUUID.String()[len(o.orderUUID.String())-8:]
 }
 
 // UnmarshalOrder rebuilds an Order from already-validated state.
