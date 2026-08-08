@@ -12,7 +12,51 @@ import (
 	"eats/backend/common/shared"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/domain"
+	"github.com/shopspring/decimal"
 )
+
+type SettlementsBreakdownType string
+
+const (
+	SettlementsBreakdownTypeItems    SettlementsBreakdownType = "items"
+	SettlementsBreakdownTypeDelivery SettlementsBreakdownType = "delivery"
+	SettlementsBreakdownTypeTotal    SettlementsBreakdownType = "total"
+)
+
+func (e *SettlementsBreakdownType) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SettlementsBreakdownType(s)
+	case string:
+		*e = SettlementsBreakdownType(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SettlementsBreakdownType: %T", src)
+	}
+	return nil
+}
+
+type NullSettlementsBreakdownType struct {
+	SettlementsBreakdownType SettlementsBreakdownType
+	Valid                    bool // Valid is true if SettlementsBreakdownType is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSettlementsBreakdownType) Scan(value interface{}) error {
+	if value == nil {
+		ns.SettlementsBreakdownType, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SettlementsBreakdownType.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSettlementsBreakdownType) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SettlementsBreakdownType), nil
+}
 
 type SettlementsLegalEntityType string
 
@@ -66,6 +110,23 @@ type SettlementsLegalEntity struct {
 	Currency          shared.Currency
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+type SettlementsOrder struct {
+	OrderUuid           models.OrderUUID
+	RestaurantUuid      domain.LegalEntityUUID
+	CourierUuid         domain.LegalEntityUUID
+	Currency            shared.Currency
+	CommissionNetAmount decimal.Decimal
+	OrderedAt           time.Time
+}
+
+type SettlementsOrderBreakdown struct {
+	OrderUuid     models.OrderUUID
+	BreakdownType SettlementsBreakdownType
+	NetAmount     decimal.Decimal
+	TaxAmount     decimal.Decimal
+	GrossAmount   decimal.Decimal
 }
 
 type SettlementsPartnerPlatformMapping struct {
