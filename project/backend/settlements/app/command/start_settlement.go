@@ -75,6 +75,16 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 		return fmt.Errorf("error saving order: %w", err)
 	}
 
+	err = h.billingCycleRepository.AddOrderToCurrentBillingCycle(ctx, domain.LegalEntityUUID{cmd.CourierUUID}, models.OrderUUID{cmd.OrderUUID})
+	if err != nil {
+		return fmt.Errorf("error adding order to courier's billing cycle: %w", err)
+	}
+
+	err = h.billingCycleRepository.AddOrderToCurrentBillingCycle(ctx, domain.LegalEntityUUID{cmd.RestaurantUUID}, models.OrderUUID{cmd.OrderUUID})
+	if err != nil {
+		return fmt.Errorf("error adding order to restaurant's billing cycle: %w", err)
+	}
+
 	log.FromContext(ctx).Info(
 		"Settlement started",
 		"order", cmd.OrderUUID,
