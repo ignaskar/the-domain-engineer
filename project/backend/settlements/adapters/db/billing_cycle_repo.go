@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"eats/backend/common"
 	"eats/backend/settlements/adapters/db/dbmodels"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/app/query"
@@ -115,6 +117,42 @@ func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, pa
 	}
 
 	return readModels, nil
+}
+
+func (r *BillingCycleRepository) AddOrderToCurrentBillingCycle(
+	ctx context.Context,
+	partnerUUID domain.LegalEntityUUID,
+	orderUUID models.OrderUUID,
+) error {
+	return common.UpdateInSerializableTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(tx)
+
+		alreadyExists, err := queries.OrderInPartnerBillingCycleExists(ctx, dbmodels.OrderInPartnerBillingCycleExistsParams{
+			OrderUuid:   orderUUID,
+			PartnerUuid: partnerUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to check if order exists in billing cycle: %w", err)
+		}
+		if alreadyExists {
+			return nil
+		}
+
+		lastCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
+		if err != nil {
+			return fmt.Errorf("failed to get current billing cycle: %w", err)
+		}
+
+		err = queries.AddOrderToBillingCycle(ctx, dbmodels.AddOrderToBillingCycleParams{
+			BillingCycleUuid: lastCycle.BillingCycleUuid,
+			OrderUuid:        orderUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to add order to billing cycle: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func newBillingCycleSaveParams(billingCycle *domain.BillingCycle) dbmodels.SaveBillingCycleParams {

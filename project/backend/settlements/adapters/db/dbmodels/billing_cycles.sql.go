@@ -15,6 +15,22 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const addOrderToBillingCycle = `-- name: AddOrderToBillingCycle :exec
+INSERT INTO settlements.billing_cycle_orders (billing_cycle_uuid, order_uuid)
+VALUES ($1, $2)
+ON CONFLICT (billing_cycle_uuid, order_uuid) DO NOTHING
+`
+
+type AddOrderToBillingCycleParams struct {
+	BillingCycleUuid domain.BillingCycleUUID
+	OrderUuid        models.OrderUUID
+}
+
+func (q *Queries) AddOrderToBillingCycle(ctx context.Context, arg AddOrderToBillingCycleParams) error {
+	_, err := q.db.Exec(ctx, addOrderToBillingCycle, arg.BillingCycleUuid, arg.OrderUuid)
+	return err
+}
+
 const billingCyclesByPartnerUUID = `-- name: BillingCyclesByPartnerUUID :many
 SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date
 FROM settlements.billing_cycles
@@ -51,6 +67,30 @@ func (q *Queries) BillingCyclesByPartnerUUID(ctx context.Context, partnerUuid do
 	return items, nil
 }
 
+const currentBillingCycle = `-- name: CurrentBillingCycle :one
+SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date
+FROM settlements.billing_cycles
+WHERE partner_uuid = $1
+AND closed = false
+LIMIT 1
+`
+
+func (q *Queries) CurrentBillingCycle(ctx context.Context, partnerUuid domain.LegalEntityUUID) (SettlementsBillingCycle, error) {
+	row := q.db.QueryRow(ctx, currentBillingCycle, partnerUuid)
+	var i SettlementsBillingCycle
+	err := row.Scan(
+		&i.BillingCycleUuid,
+		&i.PartnerUuid,
+		&i.PartnerType,
+		&i.BillingCycleNumber,
+		&i.Closed,
+		&i.Settled,
+		&i.StartDate,
+		&i.EndDate,
+	)
+	return i, err
+}
+
 const orderBreakdownsByBillingCycleUUID = `-- name: OrderBreakdownsByBillingCycleUUID :many
 SELECT ob.order_uuid, ob.breakdown_type, ob.net_amount, ob.tax_amount, ob.gross_amount
 FROM settlements.order_breakdowns ob
@@ -82,6 +122,27 @@ func (q *Queries) OrderBreakdownsByBillingCycleUUID(ctx context.Context, billing
 		return nil, err
 	}
 	return items, nil
+}
+
+const orderInPartnerBillingCycleExists = `-- name: OrderInPartnerBillingCycleExists :one
+SELECT EXISTS(
+    SELECT 1 FROM settlements.billing_cycle_orders bco
+    INNER JOIN settlements.billing_cycles bc ON bco.billing_cycle_uuid = bc.billing_cycle_uuid
+    WHERE bco.order_uuid = $1
+        AND bc.partner_uuid = $2
+)
+`
+
+type OrderInPartnerBillingCycleExistsParams struct {
+	OrderUuid   models.OrderUUID
+	PartnerUuid domain.LegalEntityUUID
+}
+
+func (q *Queries) OrderInPartnerBillingCycleExists(ctx context.Context, arg OrderInPartnerBillingCycleExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, orderInPartnerBillingCycleExists, arg.OrderUuid, arg.PartnerUuid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const ordersByBillingCycleUUID = `-- name: OrdersByBillingCycleUUID :many
