@@ -56,6 +56,7 @@ func (m *Module) Init(ctx context.Context) error {
 	m.legalEntityRepository = db.NewLegalEntityRepository(m.pgxDb)
 
 	m.commandHandlers = command.NewHandlers(
+		billingCycleRepository,
 		orderRepository,
 		m.legalEntityRepository,
 		m.modules,
