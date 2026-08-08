@@ -11,7 +11,7 @@ import (
 
 type Billing interface {
 	CalculateTaxes(ctx context.Context, req CalculateTaxesRequest) (CalculateTaxesResponse, error)
-	IssueReceipt(ctx context.Context, req IssueReceiptRequest) error
+	IssueReceipt(ctx context.Context, req IssueReceiptRequest) (DocumentReadModel, error)
 }
 
 type CalculateTaxesRequest struct {

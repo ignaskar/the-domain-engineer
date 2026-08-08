@@ -9,6 +9,7 @@ import (
 	"eats/backend/common/log"
 	"eats/backend/common/shared"
 	settlementsModule "eats/backend/settlements/api/module/client"
+	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/domain"
 )
 
@@ -37,7 +38,7 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 
 	externalReference := cmd.OrderUUID.String()
 
-	err = h.modules.IssueReceipt(ctx, client.IssueReceiptRequest{
+	receipt, err := h.modules.IssueReceipt(ctx, client.IssueReceiptRequest{
 		ExternalReference: &externalReference,
 		IssueDate:         time.Now(),
 		Currency:          cmd.Currency,
@@ -54,6 +55,25 @@ func (h *Handlers) StartSettlement(ctx context.Context, cmd settlementsModule.St
 	})
 	if err != nil {
 		return fmt.Errorf("could not issue receipt: %w", err)
+	}
+
+	courierUUID := domain.LegalEntityUUID{cmd.CourierUUID}
+
+	order, err := models.NewOrder(
+		models.OrderUUID{cmd.OrderUUID},
+		restaurantUUID,
+		courierUUID,
+		cmd.Currency,
+		cmd.OrderedAt,
+		receipt,
+	)
+	if err != nil {
+		return fmt.Errorf("could not create order: %w", err)
+	}
+
+	err = h.orderRepository.SaveOrder(ctx, order)
+	if err != nil {
+		return fmt.Errorf("could not save order: %w", err)
 	}
 
 	log.FromContext(ctx).Info(
