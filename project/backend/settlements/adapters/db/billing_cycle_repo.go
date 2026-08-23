@@ -127,54 +127,62 @@ func (r *BillingCycleRepository) billingCycleOrdersTx(ctx context.Context, queri
 // "BillingCycleClosed" event via the outbox pattern, and settlement would be a separate
 // subscriber. See https://threedots.tech/event-driven/
 func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID) (*domain.BillingCycle, []models.Order, error) {
-	// TODO: implement in a serializable transaction (see AddOrderToCurrentBillingCycle for the pattern).
-	// Close the current cycle, snapshot its orders, and create the next cycle.
+	var closedCycle *domain.BillingCycle
+	var orders []models.Order
 
-	var previousBillingCycle *domain.BillingCycle
-	var previousBillingCycleOrders []models.Order
-
+	// Serializable isolation is required here to prevent race conditions with
+	// AddOrderToCurrentBillingCycle. See TestAddOrderToCurrentBillingCycle_RaceWithClose.
 	err := common.UpdateInSerializableTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
 		queries := dbmodels.New(tx)
 
-		dbCurrentCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
+		currentDBCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
 		if err != nil {
-			return fmt.Errorf("error retrieving current billing cycle: %w", err)
+			return fmt.Errorf("error getting last billing cycle: %w", err)
 		}
 
-		currentCycle := newBillingCycleFromDBModel(dbCurrentCycle)
+		currentCycle := newBillingCycleFromDBModel(currentDBCycle)
 
-		orders, err := r.billingCycleOrdersTx(ctx, queries, currentCycle.UUID())
+		// Read orders within the same transaction to ensure consistency.
+		// This prevents race conditions where an order is added after we read
+		// but before we close the billing cycle.
+		orders, err = r.billingCycleOrdersTx(ctx, queries, currentCycle.UUID())
 		if err != nil {
-			return fmt.Errorf("error retrieving current billing cycle orders: %w", err)
+			return fmt.Errorf("error getting billing cycle orders: %w", err)
 		}
 
-		currentCycle.Close()
+		// Close inside the serializable transaction to guarantee no orders are added
+		// between reading orders and marking the cycle as closed.
+		// Close is idempotent at the DB level: SaveBillingCycle uses ON CONFLICT DO UPDATE.
+		// Documents issued against the closed cycle are immutable and idempotent via
+		// external references.
+		err = currentCycle.Close()
+		if err != nil {
+			return fmt.Errorf("error closing billing cycle: %w", err)
+		}
 
 		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(currentCycle))
 		if err != nil {
-			return fmt.Errorf("error saving closed current billing cycle: %w", err)
+			return fmt.Errorf("error saving billing cycle: %w", err)
 		}
 
-		newBillingCycle, err := domain.NewNextBillingCycle(currentCycle)
+		nextCycle, err := domain.NewNextBillingCycle(currentCycle)
 		if err != nil {
-			return fmt.Errorf("error opening new billing cycle: %w", err)
+			return fmt.Errorf("error creating next billing cycle: %w", err)
 		}
 
-		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(newBillingCycle))
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(nextCycle))
 		if err != nil {
-			return fmt.Errorf("error saving new billing cycle: %w", err)
+			return fmt.Errorf("error saving next billing cycle: %w", err)
 		}
 
-		previousBillingCycle = currentCycle
-		previousBillingCycleOrders = orders
-
+		closedCycle = currentCycle
 		return nil
 	})
 	if err != nil {
-		return nil, []models.Order{}, err
+		return nil, nil, err
 	}
 
-	return previousBillingCycle, previousBillingCycleOrders, nil
+	return closedCycle, orders, nil
 }
 
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
