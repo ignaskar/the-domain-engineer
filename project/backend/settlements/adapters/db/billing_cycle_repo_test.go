@@ -6,6 +6,7 @@ package db_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -124,6 +125,56 @@ func TestBillingCycleRepository_Lifecycle(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, 2, bc.Number())
 		assert.True(t, bc.Closed())
+	})
+
+	t.Run("CalculateCommissionInvoiceData", func(t *testing.T) {
+		invoice, err := repo.CalculateCommissionInvoiceData(ctx, restaurantBillingCycleUUID, platformUUID)
+		require.NoError(t, err)
+		assert.Equal(t, invoice.BuyerUUID, restaurant.UUID)
+		assert.Equal(t, platformUUID.LegalEntityUUID, invoice.SellerUUID, "platform should be the seller of the commission invoice")
+		require.Len(t, invoice.LineItems, 1, "commission invoice should have one aggregated line item")
+
+		// Restaurant cycle has 5 orders (added above), each with commission=$20 set in
+		// newTestOrder. The aggregation should sum the per-order commissions:
+		//   NetAmount = 5 × $20 = $100.
+		// Quantity is always 1 because NetAmount is already the aggregated total.
+		// The order count goes into the line item name instead.
+		// Catches: SQL missing SUM/GROUP BY, wrong column aggregated, returning a
+		// single order's commission instead of the cycle total.
+		expectedNet := decimal.NewFromFloat(100.0)
+		assert.True(t, invoice.LineItems[0].NetAmount.Equal(expectedNet),
+			"commission net amount: expected %s, got %s", expectedNet, invoice.LineItems[0].NetAmount)
+		assert.Equal(t, 1, invoice.LineItems[0].Quantity, "quantity should be 1 because net amount is already the aggregated total")
+		assert.Contains(t, invoice.LineItems[0].Name, fmt.Sprintf("%d orders", ordersCount), "line item name should contain the order count")
+
+		_, err = repo.CalculateCommissionInvoiceData(ctx, courierBillingCycleUUID, platformUUID)
+		require.Error(t, err, "Courier billing cycle should not have commission invoice")
+	})
+
+	t.Run("CalculateDeliveryInvoicesData", func(t *testing.T) {
+		invoices, err := repo.CalculateDeliveryInvoicesData(ctx, courierBillingCycleUUID)
+		require.NoError(t, err)
+		require.Len(t, invoices, 3, "There should be 3 delivery invoices for 3 different restaurants")
+
+		// Courier cycle has 5 orders across 3 restaurants, each with delivery net=$9.
+		// Aggregated per-buyer, the totals should sum to 5 × $9 = $45 across 3 invoices
+		// (1 + 2 + 2 orders by buyer restaurant). Catches: SQL summing the wrong column,
+		// returning per-order rows instead of per-buyer aggregates, wrong seller assignment.
+		totalNet := decimal.Zero
+		for _, inv := range invoices {
+			require.Len(t, inv.LineItems, 1, "each delivery invoice should have one aggregated line item")
+			assert.Equal(t, courier.UUID, inv.SellerUUID, "courier should be the seller of every delivery invoice")
+			assert.Equal(t, 1, inv.LineItems[0].Quantity, "quantity should be 1 because net amount is already the aggregated total")
+			assert.Contains(t, inv.LineItems[0].Name, "orders", "line item name should contain the order count")
+			totalNet = totalNet.Add(inv.LineItems[0].NetAmount)
+		}
+		expectedTotalNet := decimal.NewFromFloat(45.0)
+		assert.True(t, totalNet.Equal(expectedTotalNet),
+			"sum of delivery invoice net amounts: expected %s, got %s", expectedTotalNet, totalNet)
+
+		invoices, err = repo.CalculateDeliveryInvoicesData(ctx, restaurantBillingCycleUUID)
+		require.NoError(t, err)
+		require.Len(t, invoices, 0, "Restaurant billing cycle should not have delivery invoices")
 	})
 }
 

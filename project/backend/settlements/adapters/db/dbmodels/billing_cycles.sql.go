@@ -15,6 +15,24 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+const addOrderToBillingCycle = `-- name: AddOrderToBillingCycle :exec
+INSERT INTO settlements.billing_cycle_orders (billing_cycle_uuid, order_uuid)
+VALUES (
+           $1, $2
+)
+ON CONFLICT (billing_cycle_uuid, order_uuid) DO NOTHING
+`
+
+type AddOrderToBillingCycleParams struct {
+	BillingCycleUuid domain.BillingCycleUUID
+	OrderUuid        models.OrderUUID
+}
+
+func (q *Queries) AddOrderToBillingCycle(ctx context.Context, arg AddOrderToBillingCycleParams) error {
+	_, err := q.db.Exec(ctx, addOrderToBillingCycle, arg.BillingCycleUuid, arg.OrderUuid)
+	return err
+}
+
 const billingCyclesByPartnerUUID = `-- name: BillingCyclesByPartnerUUID :many
 SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date
 FROM settlements.billing_cycles
@@ -40,6 +58,102 @@ func (q *Queries) BillingCyclesByPartnerUUID(ctx context.Context, partnerUuid do
 			&i.Settled,
 			&i.StartDate,
 			&i.EndDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const commissionInvoiceByBillingCycleUUID = `-- name: CommissionInvoiceByBillingCycleUUID :one
+SELECT
+    bc.partner_uuid AS buyer_uuid,
+    COUNT(o.order_uuid) AS quantity,
+    SUM(o.commission_net_amount)::DECIMAL AS net_amount
+FROM settlements.orders o
+JOIN settlements.billing_cycle_orders bco ON o.order_uuid = bco.order_uuid
+JOIN settlements.billing_cycles bc USING (billing_cycle_uuid)
+WHERE bc.billing_cycle_uuid = $1
+    AND bc.partner_type = 'restaurant'
+GROUP BY bc.partner_uuid
+`
+
+type CommissionInvoiceByBillingCycleUUIDRow struct {
+	BuyerUuid domain.LegalEntityUUID
+	Quantity  int64
+	NetAmount decimal.Decimal
+}
+
+func (q *Queries) CommissionInvoiceByBillingCycleUUID(ctx context.Context, billingCycleUuid domain.BillingCycleUUID) (CommissionInvoiceByBillingCycleUUIDRow, error) {
+	row := q.db.QueryRow(ctx, commissionInvoiceByBillingCycleUUID, billingCycleUuid)
+	var i CommissionInvoiceByBillingCycleUUIDRow
+	err := row.Scan(&i.BuyerUuid, &i.Quantity, &i.NetAmount)
+	return i, err
+}
+
+const currentBillingCycle = `-- name: CurrentBillingCycle :one
+SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date FROM settlements.billing_cycles
+WHERE partner_uuid = $1 AND closed = false
+LIMIT 1
+`
+
+func (q *Queries) CurrentBillingCycle(ctx context.Context, partnerUuid domain.LegalEntityUUID) (SettlementsBillingCycle, error) {
+	row := q.db.QueryRow(ctx, currentBillingCycle, partnerUuid)
+	var i SettlementsBillingCycle
+	err := row.Scan(
+		&i.BillingCycleUuid,
+		&i.PartnerUuid,
+		&i.PartnerType,
+		&i.BillingCycleNumber,
+		&i.Closed,
+		&i.Settled,
+		&i.StartDate,
+		&i.EndDate,
+	)
+	return i, err
+}
+
+const deliveryInvoicesByBillingCycleUUID = `-- name: DeliveryInvoicesByBillingCycleUUID :many
+SELECT
+    bc.partner_uuid AS seller_uuid,
+    o.restaurant_uuid AS buyer_uuid,
+    COUNT(o.order_uuid) AS quantity,
+    SUM(ob.net_amount)::DECIMAL AS net_amount
+FROM settlements.orders o
+JOIN settlements.order_breakdowns ob ON o.order_uuid = ob.order_uuid AND ob.breakdown_type = 'delivery'
+JOIN settlements.billing_cycle_orders bco ON o.order_uuid = bco.order_uuid
+JOIN settlements.billing_cycles bc USING (billing_cycle_uuid)
+WHERE bc.billing_cycle_uuid = $1
+    AND bc.partner_type = 'courier'
+GROUP BY (bc.partner_uuid, o.restaurant_uuid)
+ORDER BY (bc.partner_uuid, o.restaurant_uuid)
+`
+
+type DeliveryInvoicesByBillingCycleUUIDRow struct {
+	SellerUuid domain.LegalEntityUUID
+	BuyerUuid  domain.LegalEntityUUID
+	Quantity   int64
+	NetAmount  decimal.Decimal
+}
+
+func (q *Queries) DeliveryInvoicesByBillingCycleUUID(ctx context.Context, billingCycleUuid domain.BillingCycleUUID) ([]DeliveryInvoicesByBillingCycleUUIDRow, error) {
+	rows, err := q.db.Query(ctx, deliveryInvoicesByBillingCycleUUID, billingCycleUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeliveryInvoicesByBillingCycleUUIDRow{}
+	for rows.Next() {
+		var i DeliveryInvoicesByBillingCycleUUIDRow
+		if err := rows.Scan(
+			&i.SellerUuid,
+			&i.BuyerUuid,
+			&i.Quantity,
+			&i.NetAmount,
 		); err != nil {
 			return nil, err
 		}
@@ -82,6 +196,27 @@ func (q *Queries) OrderBreakdownsByBillingCycleUUID(ctx context.Context, billing
 		return nil, err
 	}
 	return items, nil
+}
+
+const orderInPartnerBillingCycleExists = `-- name: OrderInPartnerBillingCycleExists :one
+SELECT EXISTS(
+    SELECT 1 FROM settlements.billing_cycle_orders bco
+    INNER JOIN settlements.billing_cycles bc ON bco.billing_cycle_uuid = bc.billing_cycle_uuid
+    WHERE bco.order_uuid = $1
+      AND bc.partner_uuid = $2
+)
+`
+
+type OrderInPartnerBillingCycleExistsParams struct {
+	OrderUuid   models.OrderUUID
+	PartnerUuid domain.LegalEntityUUID
+}
+
+func (q *Queries) OrderInPartnerBillingCycleExists(ctx context.Context, arg OrderInPartnerBillingCycleExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, orderInPartnerBillingCycleExists, arg.OrderUuid, arg.PartnerUuid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const ordersByBillingCycleUUID = `-- name: OrdersByBillingCycleUUID :many

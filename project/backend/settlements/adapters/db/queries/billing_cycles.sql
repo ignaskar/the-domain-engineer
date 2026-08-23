@@ -1,3 +1,8 @@
+-- name: CurrentBillingCycle :one
+SELECT * FROM settlements.billing_cycles
+WHERE partner_uuid = $1 AND closed = false
+LIMIT 1;
+
 -- name: SaveBillingCycle :exec
 INSERT INTO settlements.billing_cycles (billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date)
 VALUES (
@@ -26,6 +31,21 @@ SELECT ob.*
 FROM settlements.order_breakdowns ob
 INNER JOIN settlements.billing_cycle_orders bco USING (order_uuid)
 WHERE bco.billing_cycle_uuid = $1;
+
+-- name: AddOrderToBillingCycle :exec
+INSERT INTO settlements.billing_cycle_orders (billing_cycle_uuid, order_uuid)
+VALUES (
+           sqlc.arg(billing_cycle_uuid), sqlc.arg(order_uuid)
+)
+ON CONFLICT (billing_cycle_uuid, order_uuid) DO NOTHING;
+
+-- name: OrderInPartnerBillingCycleExists :one
+SELECT EXISTS(
+    SELECT 1 FROM settlements.billing_cycle_orders bco
+    INNER JOIN settlements.billing_cycles bc ON bco.billing_cycle_uuid = bc.billing_cycle_uuid
+    WHERE bco.order_uuid = sqlc.arg(order_uuid)
+      AND bc.partner_uuid = sqlc.arg(partner_uuid)
+);
 
 -- name: BillingCyclesByPartnerUUID :many
 SELECT *

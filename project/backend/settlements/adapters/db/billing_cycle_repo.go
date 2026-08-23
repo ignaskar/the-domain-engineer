@@ -9,6 +9,7 @@ import (
 
 	"eats/backend/common"
 	"eats/backend/settlements/adapters/db/dbmodels"
+	"eats/backend/settlements/app"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/app/query"
 	"eats/backend/settlements/domain"
@@ -127,8 +128,73 @@ func (r *BillingCycleRepository) billingCycleOrdersTx(ctx context.Context, queri
 // "BillingCycleClosed" event via the outbox pattern, and settlement would be a separate
 // subscriber. See https://threedots.tech/event-driven/
 func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID) (*domain.BillingCycle, []models.Order, error) {
-	// TODO: implement in a serializable transaction (see AddOrderToCurrentBillingCycle for the pattern).
-	// Close the current cycle, snapshot its orders, and create the next cycle.
+	var closedCycle *domain.BillingCycle
+	var orders []models.Order
+
+	// Serializable isolation is required here to prevent race conditions with
+	// AddOrderToCurrentBillingCycle. See TestAddOrderToCurrentBillingCycle_RaceWithClose.
+	err := common.UpdateInSerializableTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(tx)
+
+		currentDBCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
+		if err != nil {
+			return fmt.Errorf("error getting last billing cycle: %w", err)
+		}
+
+		currentCycle := newBillingCycleFromDBModel(currentDBCycle)
+
+		// Read orders within the same transaction to ensure consistency.
+		// This prevents race conditions where an order is added after we read
+		// but before we close the billing cycle.
+		orders, err = r.billingCycleOrdersTx(ctx, queries, currentCycle.UUID())
+		if err != nil {
+			return fmt.Errorf("error getting billing cycle orders: %w", err)
+		}
+
+		// Close inside the serializable transaction to guarantee no orders are added
+		// between reading orders and marking the cycle as closed.
+		// Close is idempotent at the DB level: SaveBillingCycle uses ON CONFLICT DO UPDATE.
+		// Documents issued against the closed cycle are immutable and idempotent via
+		// external references.
+		err = currentCycle.Close()
+		if err != nil {
+			return fmt.Errorf("error closing billing cycle: %w", err)
+		}
+
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(currentCycle))
+		if err != nil {
+			return fmt.Errorf("error saving billing cycle: %w", err)
+		}
+
+		nextCycle, err := domain.NewNextBillingCycle(currentCycle)
+		if err != nil {
+			return fmt.Errorf("error creating next billing cycle: %w", err)
+		}
+
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(nextCycle))
+		if err != nil {
+			return fmt.Errorf("error saving next billing cycle: %w", err)
+		}
+
+		closedCycle = currentCycle
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return closedCycle, orders, nil
+}
+
+func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
+	// TODO: query CommissionInvoiceByBillingCycleUUID and return an app.NewInvoiceData.
+	// The external reference must be stable across retries for idempotency.
+	panic("not implemented")
+}
+
+func (r *BillingCycleRepository) CalculateDeliveryInvoicesData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) ([]app.NewInvoiceData, error) {
+	// TODO: query DeliveryInvoicesByBillingCycleUUID and return a slice of app.NewInvoiceData.
+	// Each row becomes one invoice. The external reference must be unique per seller-buyer pair.
 	panic("not implemented")
 }
 
