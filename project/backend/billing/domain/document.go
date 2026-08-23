@@ -89,12 +89,11 @@ func (f DocumentFactory) NewReceiptBuilder(ctx context.Context, data NewDocument
 	return f.newDocumentBuilder(ctx, DocumentTypeReceipt, data)
 }
 
+// NewInvoiceBuilder resolves all external data (tax rates) upfront,
+// so Build() can safely run inside a database transaction.
 func (f DocumentFactory) NewInvoiceBuilder(ctx context.Context, data NewDocumentData) (*DocumentBuilder, error) {
 	return f.newDocumentBuilder(ctx, DocumentTypeInvoice, data)
 }
-
-// TODO: add NewInvoiceBuilder. Mirror NewReceiptBuilder, but invoices don't need
-// the buyer-tax-id check (invoices are issued to entities with tax IDs).
 
 func (f DocumentFactory) newDocumentBuilder(
 	ctx context.Context,

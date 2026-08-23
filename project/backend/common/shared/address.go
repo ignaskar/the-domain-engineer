@@ -97,12 +97,18 @@ type addressDbDTO struct {
 }
 
 func (a *Address) Scan(src any) error {
-	text, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("invalid type for %T, expected string", src)
+	var text []byte
+
+	switch t := src.(type) {
+	case string:
+		text = []byte(t)
+	case []byte:
+		text = t
+	default:
+		return fmt.Errorf("invalid address type: %T", t)
 	}
 
-	err := json.Unmarshal([]byte(text), a)
+	err := json.Unmarshal(text, a)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling %T from json: %w", a, err)
 	}
