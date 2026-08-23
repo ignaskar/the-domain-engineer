@@ -17,13 +17,12 @@ type DocumentType struct {
 type DocumentTypeValues string
 
 func (DocumentTypeValues) Values() []string {
-	// TODO: also accept "invoice".
-	return []string{"receipt"}
+	return []string{"receipt", "invoice"}
 }
 
 var (
 	DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
-	// TODO: declare DocumentTypeInvoice using the same MustEnum helper.
+	DocumentTypeInvoice = common.MustEnum[DocumentType]("invoice")
 )
 
 type DocumentFactory struct {
@@ -88,6 +87,10 @@ func (f DocumentFactory) NewReceiptBuilder(ctx context.Context, data NewDocument
 	}
 
 	return f.newDocumentBuilder(ctx, DocumentTypeReceipt, data)
+}
+
+func (f DocumentFactory) NewInvoiceBuilder(ctx context.Context, data NewDocumentData) (*DocumentBuilder, error) {
+	return f.newDocumentBuilder(ctx, DocumentTypeInvoice, data)
 }
 
 // TODO: add NewInvoiceBuilder. Mirror NewReceiptBuilder, but invoices don't need

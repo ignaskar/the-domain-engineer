@@ -26,7 +26,7 @@ func (s DocumentSeries) String() string {
 
 var (
 	DocumentSeriesReceipt = DocumentSeries{"R"}
-	// TODO: declare DocumentSeriesInvoice with prefix "INV".
+	DocumentSeriesInvoice = DocumentSeries{"INV"}
 )
 
 type DocumentNumber struct {

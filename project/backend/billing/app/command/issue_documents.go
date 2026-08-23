@@ -11,6 +11,10 @@ type IssueReceipt struct {
 	DocumentData domain.NewDocumentData
 }
 
+type IssueInvoice struct {
+	DocumentData domain.NewDocumentData
+}
+
 func (h *Handlers) IssueReceipt(ctx context.Context, cmd IssueReceipt) (domain.DocumentUUID, error) {
 	// Build the document outside the transaction to avoid holding a database connection
 	// during inter-module calls (tax rate lookups for each line item). If other modules share the
@@ -31,5 +35,17 @@ func (h *Handlers) IssueReceipt(ctx context.Context, cmd IssueReceipt) (domain.D
 	)
 }
 
-// TODO: add an IssueInvoice command and handler.
-// Mirror the IssueReceipt shape, using NewInvoiceBuilder and DocumentSeriesInvoice.
+func (h *Handlers) IssueInvoice(ctx context.Context, cmd IssueInvoice) (domain.DocumentUUID, error) {
+	builder, err := h.documentFactory.NewInvoiceBuilder(ctx, cmd.DocumentData)
+	if err != nil {
+		return domain.DocumentUUID{}, fmt.Errorf("error building invoice: %w", err)
+	}
+
+	return h.documentRepository.CreateDocument(
+		ctx,
+		domain.DocumentSeriesInvoice,
+		func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+			return builder.Build(documentNumber)
+		},
+	)
+}
