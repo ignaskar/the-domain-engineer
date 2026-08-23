@@ -190,38 +190,36 @@ func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerU
 func (r *BillingCycleRepository) UnsettledClosedCycles(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]*domain.BillingCycle, error) {
 	queries := dbmodels.New(r.db)
 
-	dbBillingCycles, err := queries.UnsettledClosedCycles(ctx, partnerUUID)
+	dbCycles, err := queries.UnsettledClosedCycles(ctx, partnerUUID)
 	if err != nil {
-		return nil, fmt.Errorf("error retrieving unsettled billing cycles: %w", err)
+		return nil, fmt.Errorf("error fetching unsettled closed cycles: %w", err)
 	}
 
-	billingCycles := make([]*domain.BillingCycle, len(dbBillingCycles))
-	for i, dbBillingCycle := range dbBillingCycles {
-		billingCycles[i] = newBillingCycleFromDBModel(dbBillingCycle)
+	cycles := make([]*domain.BillingCycle, len(dbCycles))
+	for i, dbCycle := range dbCycles {
+		cycles[i] = newBillingCycleFromDBModel(dbCycle)
 	}
 
-	return billingCycles, nil
+	return cycles, nil
 }
 
 func (r *BillingCycleRepository) SettleBillingCycle(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) error {
 	return common.UpdateInTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
-		queries := dbmodels.New(r.db)
+		queries := dbmodels.New(tx)
 
-		dbBillingCycle, err := queries.GetBillingCycleByUUID(ctx, billingCycleUUID)
+		dbCycle, err := queries.GetBillingCycleByUUID(ctx, billingCycleUUID)
 		if err != nil {
-			return fmt.Errorf("error getting billing cycle by UUID: %w", err)
+			return fmt.Errorf("error getting billing cycle: %w", err)
 		}
 
-		billingCycle := newBillingCycleFromDBModel(dbBillingCycle)
+		cycle := newBillingCycleFromDBModel(dbCycle)
 
-		billingCycle.Settle()
-
-		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(billingCycle))
+		err = cycle.Settle()
 		if err != nil {
-			return fmt.Errorf("error saving settled billing cycle: %w", err)
+			return fmt.Errorf("error settling billing cycle: %w", err)
 		}
 
-		return nil
+		return queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(cycle))
 	})
 }
 
