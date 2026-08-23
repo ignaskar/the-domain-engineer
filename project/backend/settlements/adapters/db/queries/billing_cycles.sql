@@ -79,3 +79,12 @@ JOIN settlements.billing_cycles bc USING (billing_cycle_uuid)
 WHERE bc.billing_cycle_uuid = $1
     AND bc.partner_type = 'restaurant'
 GROUP BY bc.partner_uuid;
+
+-- name: UnsettledClosedCycles :many
+SELECT * FROM settlements.billing_cycles
+WHERE partner_uuid = $1 AND closed = true AND settled = false
+ORDER BY billing_cycle_number ASC;
+
+-- name: GetBillingCycleByUUID :one
+SELECT * FROM settlements.billing_cycles
+WHERE billing_cycle_uuid = $1;

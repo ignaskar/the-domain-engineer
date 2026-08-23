@@ -165,6 +165,27 @@ func (q *Queries) DeliveryInvoicesByBillingCycleUUID(ctx context.Context, billin
 	return items, nil
 }
 
+const getBillingCycleByUUID = `-- name: GetBillingCycleByUUID :one
+SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date FROM settlements.billing_cycles
+WHERE billing_cycle_uuid = $1
+`
+
+func (q *Queries) GetBillingCycleByUUID(ctx context.Context, billingCycleUuid domain.BillingCycleUUID) (SettlementsBillingCycle, error) {
+	row := q.db.QueryRow(ctx, getBillingCycleByUUID, billingCycleUuid)
+	var i SettlementsBillingCycle
+	err := row.Scan(
+		&i.BillingCycleUuid,
+		&i.PartnerUuid,
+		&i.PartnerType,
+		&i.BillingCycleNumber,
+		&i.Closed,
+		&i.Settled,
+		&i.StartDate,
+		&i.EndDate,
+	)
+	return i, err
+}
+
 const orderBreakdownsByBillingCycleUUID = `-- name: OrderBreakdownsByBillingCycleUUID :many
 SELECT ob.order_uuid, ob.breakdown_type, ob.net_amount, ob.tax_amount, ob.gross_amount
 FROM settlements.order_breakdowns ob
@@ -307,4 +328,39 @@ func (q *Queries) SaveBillingCycle(ctx context.Context, arg SaveBillingCyclePara
 		arg.EndDate,
 	)
 	return err
+}
+
+const unsettledClosedCycles = `-- name: UnsettledClosedCycles :many
+SELECT billing_cycle_uuid, partner_uuid, partner_type, billing_cycle_number, closed, settled, start_date, end_date FROM settlements.billing_cycles
+WHERE partner_uuid = $1 AND closed = true AND settled = false
+ORDER BY billing_cycle_number ASC
+`
+
+func (q *Queries) UnsettledClosedCycles(ctx context.Context, partnerUuid domain.LegalEntityUUID) ([]SettlementsBillingCycle, error) {
+	rows, err := q.db.Query(ctx, unsettledClosedCycles, partnerUuid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SettlementsBillingCycle{}
+	for rows.Next() {
+		var i SettlementsBillingCycle
+		if err := rows.Scan(
+			&i.BillingCycleUuid,
+			&i.PartnerUuid,
+			&i.PartnerType,
+			&i.BillingCycleNumber,
+			&i.Closed,
+			&i.Settled,
+			&i.StartDate,
+			&i.EndDate,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

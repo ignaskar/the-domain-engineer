@@ -188,13 +188,41 @@ func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerU
 }
 
 func (r *BillingCycleRepository) UnsettledClosedCycles(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]*domain.BillingCycle, error) {
-	// TODO: call queries.UnsettledClosedCycles and map each row through newBillingCycleFromDBModel.
-	panic("not implemented")
+	queries := dbmodels.New(r.db)
+
+	dbBillingCycles, err := queries.UnsettledClosedCycles(ctx, partnerUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving unsettled billing cycles: %w", err)
+	}
+
+	billingCycles := make([]*domain.BillingCycle, len(dbBillingCycles))
+	for i, dbBillingCycle := range dbBillingCycles {
+		billingCycles[i] = newBillingCycleFromDBModel(dbBillingCycle)
+	}
+
+	return billingCycles, nil
 }
 
 func (r *BillingCycleRepository) SettleBillingCycle(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) error {
-	// TODO: implement. Same load-mutate-save pattern as CloseBillingCycle.
-	panic("not implemented")
+	return common.UpdateInTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(r.db)
+
+		dbBillingCycle, err := queries.GetBillingCycleByUUID(ctx, billingCycleUUID)
+		if err != nil {
+			return fmt.Errorf("error getting billing cycle by UUID: %w", err)
+		}
+
+		billingCycle := newBillingCycleFromDBModel(dbBillingCycle)
+
+		billingCycle.Settle()
+
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(billingCycle))
+		if err != nil {
+			return fmt.Errorf("error saving settled billing cycle: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
