@@ -388,6 +388,106 @@ func TestAddOrderToCurrentBillingCycle_RaceWithClose(t *testing.T) {
 	}
 }
 
+func TestCloseBillingCycle_Idempotent(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPool := testutils.NewDB(t)
+
+	partnerRepo := db.NewLegalEntityRepository(dbPool)
+	orderRepo := db.NewOrderRepository(dbPool)
+	repo := db.NewBillingCycleRepository(dbPool)
+
+	platformUUID := newTestPlatformEntity(t, partnerRepo)
+	restaurant := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeRestaurant)
+	courier := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeCourier)
+
+	// Add orders to cycle 1
+	order := newTestOrder(t, orderRepo, restaurant, courier)
+	err := repo.AddOrderToCurrentBillingCycle(ctx, restaurant.UUID, order.UUID())
+	require.NoError(t, err)
+
+	// First call: closes cycle 1, creates cycle 2
+	bc, orders, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, bc.Number())
+	assert.True(t, bc.Closed())
+	assert.False(t, bc.Settled())
+	assert.Len(t, orders, 1)
+
+	// Settle cycle 1
+	err = repo.SettleBillingCycle(ctx, bc.UUID())
+	require.NoError(t, err)
+
+	// Second call (retry): closes cycle 2 (empty), creates cycle 3
+	bc2, orders2, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+	require.NoError(t, err)
+	assert.Equal(t, 2, bc2.Number())
+	assert.True(t, bc2.Closed())
+	assert.Len(t, orders2, 0)
+
+	// Verify UnsettledClosedCycles returns only cycle 2 (cycle 1 is settled)
+	unsettled, err := repo.UnsettledClosedCycles(ctx, restaurant.UUID)
+	require.NoError(t, err)
+	require.Len(t, unsettled, 1)
+	assert.Equal(t, 2, unsettled[0].Number())
+
+	// Cycle 2 has 0 orders
+	cycle2Orders, err := repo.BillingCycleOrders(ctx, unsettled[0].UUID())
+	require.NoError(t, err)
+	assert.Len(t, cycle2Orders, 0)
+}
+
+func TestUnsettledClosedCycles(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPool := testutils.NewDB(t)
+
+	partnerRepo := db.NewLegalEntityRepository(dbPool)
+	orderRepo := db.NewOrderRepository(dbPool)
+	repo := db.NewBillingCycleRepository(dbPool)
+
+	platformUUID := newTestPlatformEntity(t, partnerRepo)
+	restaurant := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeRestaurant)
+	courier := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeCourier)
+
+	// Add order and close cycle 1
+	order := newTestOrder(t, orderRepo, restaurant, courier)
+	err := repo.AddOrderToCurrentBillingCycle(ctx, restaurant.UUID, order.UUID())
+	require.NoError(t, err)
+
+	bc1, _, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+	require.NoError(t, err)
+
+	// Close cycle 2 (empty)
+	bc2, _, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+	require.NoError(t, err)
+
+	// Close cycle 3 (empty)
+	_, _, err = repo.CloseBillingCycle(ctx, restaurant.UUID)
+	require.NoError(t, err)
+
+	// All three closed cycles should be unsettled
+	unsettled, err := repo.UnsettledClosedCycles(ctx, restaurant.UUID)
+	require.NoError(t, err)
+	require.Len(t, unsettled, 3)
+	assert.Equal(t, 1, unsettled[0].Number())
+	assert.Equal(t, 2, unsettled[1].Number())
+	assert.Equal(t, 3, unsettled[2].Number())
+
+	// Settle cycle 1
+	err = repo.SettleBillingCycle(ctx, bc1.UUID())
+	require.NoError(t, err)
+
+	// Only cycle 2 and 3 should be unsettled now
+	unsettled, err = repo.UnsettledClosedCycles(ctx, restaurant.UUID)
+	require.NoError(t, err)
+	require.Len(t, unsettled, 2)
+	assert.Equal(t, 2, unsettled[0].Number())
+	assert.True(t, unsettled[0].UUID().Equals(bc2.UUID().UUID))
+}
+
 func newTestPartner(
 	t *testing.T,
 	legalEntityRepo models.LegalEntityRepository,

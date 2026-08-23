@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eats/backend/common"
+	"eats/backend/common/shared"
 	"eats/backend/settlements/adapters/db/dbmodels"
 	"eats/backend/settlements/app"
 	"eats/backend/settlements/app/models"
@@ -186,16 +187,71 @@ func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerU
 	return closedCycle, orders, nil
 }
 
-func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
-	// TODO: query CommissionInvoiceByBillingCycleUUID and return an app.NewInvoiceData.
-	// The external reference must be stable across retries for idempotency.
+func (r *BillingCycleRepository) UnsettledClosedCycles(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]*domain.BillingCycle, error) {
+	// TODO: call queries.UnsettledClosedCycles and map each row through newBillingCycleFromDBModel.
 	panic("not implemented")
 }
 
-func (r *BillingCycleRepository) CalculateDeliveryInvoicesData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) ([]app.NewInvoiceData, error) {
-	// TODO: query DeliveryInvoicesByBillingCycleUUID and return a slice of app.NewInvoiceData.
-	// Each row becomes one invoice. The external reference must be unique per seller-buyer pair.
+func (r *BillingCycleRepository) SettleBillingCycle(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) error {
+	// TODO: implement. Same load-mutate-save pattern as CloseBillingCycle.
 	panic("not implemented")
+}
+
+func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
+	queries := dbmodels.New(r.db)
+
+	invoice, err := queries.CommissionInvoiceByBillingCycleUUID(ctx, billingCycleUUID)
+	if err != nil {
+		return app.NewInvoiceData{}, fmt.Errorf("error getting commission invoice for billing cycle: %w", err)
+	}
+
+	// We need to provide a unique external reference to guarantee idempotency
+	externalRef := fmt.Sprintf("settlements-commission-invoice-%v", billingCycleUUID)
+
+	return app.NewInvoiceData{
+		ExternalReference: externalRef,
+		BuyerUUID:         invoice.BuyerUuid,
+		SellerUUID:        platformUUID.LegalEntityUUID,
+		LineItems: []app.NewInvoiceDataLineItem{
+			{
+				Name:      fmt.Sprintf("Platform commission (%d orders)", invoice.Quantity),
+				Type:      shared.LineItemTypeService,
+				Quantity:  1,
+				NetAmount: invoice.NetAmount,
+			},
+		},
+	}, nil
+}
+
+func (r *BillingCycleRepository) CalculateDeliveryInvoicesData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) ([]app.NewInvoiceData, error) {
+	queries := dbmodels.New(r.db)
+
+	dbInvoices, err := queries.DeliveryInvoicesByBillingCycleUUID(ctx, billingCycleUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting delivery invoices for billing cycle: %w", err)
+	}
+
+	invoices := make([]app.NewInvoiceData, len(dbInvoices))
+	for i, dbInvoice := range dbInvoices {
+		// We need to provide a unique external reference to guarantee idempotency
+		externalRef := fmt.Sprintf("settlements-delivery-invoice-%v-%v-%v", billingCycleUUID, dbInvoice.SellerUuid, dbInvoice.BuyerUuid)
+
+		invoices[i] = app.NewInvoiceData{
+			ExternalReference: externalRef,
+			BuyerUUID:         dbInvoice.BuyerUuid,
+			SellerUUID:        dbInvoice.SellerUuid,
+			LineItems: []app.NewInvoiceDataLineItem{
+				{
+					Name:      fmt.Sprintf("Delivery (%d orders)", dbInvoice.Quantity),
+					Type:      shared.LineItemTypeDelivery,
+					Quantity:  1,
+					NetAmount: dbInvoice.NetAmount,
+				},
+			},
+		}
+	}
+
+	return invoices, nil
 }
 
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
