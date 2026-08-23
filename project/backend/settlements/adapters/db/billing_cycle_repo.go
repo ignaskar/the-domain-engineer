@@ -187,6 +187,16 @@ func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerU
 	return closedCycle, orders, nil
 }
 
+func (r *BillingCycleRepository) UnsettledClosedCycles(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]*domain.BillingCycle, error) {
+	// TODO: call queries.UnsettledClosedCycles and map each row through newBillingCycleFromDBModel.
+	panic("not implemented")
+}
+
+func (r *BillingCycleRepository) SettleBillingCycle(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) error {
+	// TODO: implement. Same load-mutate-save pattern as CloseBillingCycle.
+	panic("not implemented")
+}
+
 func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
 	queries := dbmodels.New(r.db)
 
