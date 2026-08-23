@@ -9,6 +9,7 @@ import (
 
 	"eats/backend/common"
 	"eats/backend/settlements/adapters/db/dbmodels"
+	"eats/backend/settlements/app"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/app/query"
 	"eats/backend/settlements/domain"
@@ -183,6 +184,18 @@ func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerU
 	}
 
 	return closedCycle, orders, nil
+}
+
+func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID, platformUUID models.PlatformEntityUUID) (app.NewInvoiceData, error) {
+	// TODO: query CommissionInvoiceByBillingCycleUUID and return an app.NewInvoiceData.
+	// The external reference must be stable across retries for idempotency.
+	panic("not implemented")
+}
+
+func (r *BillingCycleRepository) CalculateDeliveryInvoicesData(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) ([]app.NewInvoiceData, error) {
+	// TODO: query DeliveryInvoicesByBillingCycleUUID and return a slice of app.NewInvoiceData.
+	// Each row becomes one invoice. The external reference must be unique per seller-buyer pair.
+	panic("not implemented")
 }
 
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
