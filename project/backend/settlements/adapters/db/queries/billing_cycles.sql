@@ -55,27 +55,27 @@ ORDER BY billing_cycle_number DESC;
 
 -- name: DeliveryInvoicesByBillingCycleUUID :many
 SELECT
-  bc.partner_uuid AS seller_uuid,
-  o.restaurant_uuid AS buyer_uuid,
-  COUNT(o.order_uuid) AS quantity,
-  SUM(ob.net_amount)::DECIMAL AS net_amount
+    bc.partner_uuid AS seller_uuid,
+    o.restaurant_uuid AS buyer_uuid,
+    COUNT(o.order_uuid) AS quantity,
+    SUM(ob.net_amount)::DECIMAL AS net_amount
 FROM settlements.orders o
 JOIN settlements.order_breakdowns ob ON o.order_uuid = ob.order_uuid AND ob.breakdown_type = 'delivery'
 JOIN settlements.billing_cycle_orders bco ON o.order_uuid = bco.order_uuid
 JOIN settlements.billing_cycles bc USING (billing_cycle_uuid)
 WHERE bc.billing_cycle_uuid = $1
-  AND bc.partner_type = 'courier'
+    AND bc.partner_type = 'courier'
 GROUP BY (bc.partner_uuid, o.restaurant_uuid)
 ORDER BY (bc.partner_uuid, o.restaurant_uuid);
 
 -- name: CommissionInvoiceByBillingCycleUUID :one
 SELECT
-  bc.partner_uuid AS buyer_uuid,
-  COUNT(o.order_uuid) AS quantity,
-  SUM(o.commission_net_amount)::DECIMAL AS net_amount
+    bc.partner_uuid AS buyer_uuid,
+    COUNT(o.order_uuid) AS quantity,
+    SUM(o.commission_net_amount)::DECIMAL AS net_amount
 FROM settlements.orders o
 JOIN settlements.billing_cycle_orders bco ON o.order_uuid = bco.order_uuid
 JOIN settlements.billing_cycles bc USING (billing_cycle_uuid)
 WHERE bc.billing_cycle_uuid = $1
-  AND bc.partner_type = 'restaurant'
+    AND bc.partner_type = 'restaurant'
 GROUP BY bc.partner_uuid;

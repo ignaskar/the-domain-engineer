@@ -195,6 +195,7 @@ func (r *BillingCycleRepository) CalculateCommissionInvoiceData(ctx context.Cont
 		return app.NewInvoiceData{}, fmt.Errorf("error getting commission invoice for billing cycle: %w", err)
 	}
 
+	// We need to provide a unique external reference to guarantee idempotency
 	externalRef := fmt.Sprintf("settlements-commission-invoice-%v", billingCycleUUID)
 
 	return app.NewInvoiceData{
@@ -222,6 +223,7 @@ func (r *BillingCycleRepository) CalculateDeliveryInvoicesData(ctx context.Conte
 
 	invoices := make([]app.NewInvoiceData, len(dbInvoices))
 	for i, dbInvoice := range dbInvoices {
+		// We need to provide a unique external reference to guarantee idempotency
 		externalRef := fmt.Sprintf("settlements-delivery-invoice-%v-%v-%v", billingCycleUUID, dbInvoice.SellerUuid, dbInvoice.BuyerUuid)
 
 		invoices[i] = app.NewInvoiceData{
