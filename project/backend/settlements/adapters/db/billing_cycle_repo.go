@@ -129,7 +129,52 @@ func (r *BillingCycleRepository) billingCycleOrdersTx(ctx context.Context, queri
 func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID) (*domain.BillingCycle, []models.Order, error) {
 	// TODO: implement in a serializable transaction (see AddOrderToCurrentBillingCycle for the pattern).
 	// Close the current cycle, snapshot its orders, and create the next cycle.
-	panic("not implemented")
+
+	var previousBillingCycle *domain.BillingCycle
+	var previousBillingCycleOrders []models.Order
+
+	err := common.UpdateInSerializableTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(tx)
+
+		dbCurrentCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
+		if err != nil {
+			return fmt.Errorf("error retrieving current billing cycle: %w", err)
+		}
+
+		currentCycle := newBillingCycleFromDBModel(dbCurrentCycle)
+
+		orders, err := r.billingCycleOrdersTx(ctx, queries, currentCycle.UUID())
+		if err != nil {
+			return fmt.Errorf("error retrieving current billing cycle orders: %w", err)
+		}
+
+		currentCycle.Close()
+
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(currentCycle))
+		if err != nil {
+			return fmt.Errorf("error saving closed current billing cycle: %w", err)
+		}
+
+		newBillingCycle, err := domain.NewNextBillingCycle(currentCycle)
+		if err != nil {
+			return fmt.Errorf("error opening new billing cycle: %w", err)
+		}
+
+		err = queries.SaveBillingCycle(ctx, newBillingCycleSaveParams(newBillingCycle))
+		if err != nil {
+			return fmt.Errorf("error saving new billing cycle: %w", err)
+		}
+
+		previousBillingCycle = currentCycle
+		previousBillingCycleOrders = orders
+
+		return nil
+	})
+	if err != nil {
+		return nil, []models.Order{}, err
+	}
+
+	return previousBillingCycle, previousBillingCycleOrders, nil
 }
 
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
