@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"eats/backend/common"
 	"eats/backend/settlements/adapters/db/dbmodels"
 	"eats/backend/settlements/app/models"
 	"eats/backend/settlements/app/query"
@@ -24,6 +26,38 @@ func NewBillingCycleRepository(db *pgxpool.Pool) *BillingCycleRepository {
 	return &BillingCycleRepository{
 		db: db,
 	}
+}
+
+func (r *BillingCycleRepository) AddOrderToCurrentBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID, orderUUID models.OrderUUID) error {
+	return common.UpdateInSerializableTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
+		queries := dbmodels.New(tx)
+
+		alreadyExists, err := queries.OrderInPartnerBillingCycleExists(ctx, dbmodels.OrderInPartnerBillingCycleExistsParams{
+			OrderUuid:   orderUUID,
+			PartnerUuid: partnerUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("error checking if order exists in billing cycle: %w", err)
+		}
+		if alreadyExists {
+			return nil
+		}
+
+		lastCycle, err := queries.CurrentBillingCycle(ctx, partnerUUID)
+		if err != nil {
+			return fmt.Errorf("error getting last billing cycle: %w", err)
+		}
+
+		err = queries.AddOrderToBillingCycle(ctx, dbmodels.AddOrderToBillingCycleParams{
+			BillingCycleUuid: lastCycle.BillingCycleUuid,
+			OrderUuid:        orderUUID,
+		})
+		if err != nil {
+			return fmt.Errorf("error adding order to billing cycle: %w", err)
+		}
+
+		return nil
+	})
 }
 
 func (r *BillingCycleRepository) BillingCycleOrders(ctx context.Context, billingCycleUUID domain.BillingCycleUUID) ([]models.Order, error) {
@@ -85,6 +119,17 @@ func (r *BillingCycleRepository) billingCycleOrdersTx(ctx context.Context, queri
 	}
 
 	return orders, nil
+}
+
+// CloseBillingCycle closes the current billing cycle and creates the next one in a single
+// serializable transaction. Settlement (invoices) is handled separately to make the
+// operation idempotent. With an event-driven approach, closing would emit a
+// "BillingCycleClosed" event via the outbox pattern, and settlement would be a separate
+// subscriber. See https://threedots.tech/event-driven/
+func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID) (*domain.BillingCycle, []models.Order, error) {
+	// TODO: implement in a serializable transaction (see AddOrderToCurrentBillingCycle for the pattern).
+	// Close the current cycle, snapshot its orders, and create the next cycle.
+	panic("not implemented")
 }
 
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
