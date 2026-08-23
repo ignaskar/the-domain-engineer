@@ -121,6 +121,17 @@ func (r *BillingCycleRepository) billingCycleOrdersTx(ctx context.Context, queri
 	return orders, nil
 }
 
+// CloseBillingCycle closes the current billing cycle and creates the next one in a single
+// serializable transaction. Settlement (invoices) is handled separately to make the
+// operation idempotent. With an event-driven approach, closing would emit a
+// "BillingCycleClosed" event via the outbox pattern, and settlement would be a separate
+// subscriber. See https://threedots.tech/event-driven/
+func (r *BillingCycleRepository) CloseBillingCycle(ctx context.Context, partnerUUID domain.LegalEntityUUID) (*domain.BillingCycle, []models.Order, error) {
+	// TODO: implement in a serializable transaction (see AddOrderToCurrentBillingCycle for the pattern).
+	// Close the current cycle, snapshot its orders, and create the next cycle.
+	panic("not implemented")
+}
+
 func (r *BillingCycleRepository) BillingCyclesForPartner(ctx context.Context, partnerUUID domain.LegalEntityUUID) ([]query.BillingCycleReadModel, error) {
 	queries := dbmodels.New(r.db)
 

@@ -94,6 +94,37 @@ func TestBillingCycleRepository_Lifecycle(t *testing.T) {
 		require.Len(t, restaurantOrders, ordersCount)
 		require.Len(t, courierOrders, ordersCount)
 	})
+
+	t.Run("CloseBillingCycle_restaurant", func(t *testing.T) {
+		bc, _, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, bc.Number())
+		assert.True(t, bc.Closed())
+
+		// Close again (cycle 2)
+		bc, _, err = repo.CloseBillingCycle(ctx, restaurant.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, 2, bc.Number())
+		assert.True(t, bc.Closed())
+
+		// Once more (cycle 3)
+		bc, _, err = repo.CloseBillingCycle(ctx, restaurant.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, 3, bc.Number())
+		assert.True(t, bc.Closed())
+	})
+
+	t.Run("CloseBillingCycle_courier", func(t *testing.T) {
+		bc, _, err := repo.CloseBillingCycle(ctx, courier.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, 1, bc.Number())
+		assert.True(t, bc.Closed())
+
+		bc, _, err = repo.CloseBillingCycle(ctx, courier.UUID)
+		require.NoError(t, err)
+		assert.Equal(t, 2, bc.Number())
+		assert.True(t, bc.Closed())
+	})
 }
 
 // TestAddOrderToCurrentBillingCycle_Concurrent verifies that concurrent calls to
@@ -191,6 +222,119 @@ func TestAddOrderToCurrentBillingCycle_Idempotent(t *testing.T) {
 
 	assert.Len(t, billingCycleOrders, 1, "should have exactly one order despite multiple adds")
 	assert.True(t, billingCycleOrders[0].UUID().Equals(order.UUID().UUID), "the order should be the one we added")
+}
+
+// TestAddOrderToCurrentBillingCycle_RaceWithClose tests the scenario where orders
+// are being added concurrently while the billing cycle is being closed.
+// The concern is: can an order end up in a closed billing cycle?
+//
+// Timeline of the race condition:
+// 1. TX1 (AddOrder): BEGIN, reads current billing cycle (#1, open)
+// 2. TX2 (Close): BEGIN, reads cycle #1, reads orders for snapshot, closes cycle #1, creates cycle #2, COMMIT
+// 3. TX1: INSERT order into billing_cycle_orders for cycle #1, COMMIT
+// Result: Order is in closed cycle #1 but wasn't included in the statement snapshot.
+func TestAddOrderToCurrentBillingCycle_RaceWithClose(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	dbPool := testutils.NewDB(t)
+
+	partnerRepo := db.NewLegalEntityRepository(dbPool)
+	orderRepo := db.NewOrderRepository(dbPool)
+	repo := db.NewBillingCycleRepository(dbPool)
+
+	platformUUID := newTestPlatformEntity(t, partnerRepo)
+	restaurant := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeRestaurant)
+	courier := newTestPartner(t, partnerRepo, platformUUID, domain.PartnerTypeCourier)
+
+	// Run multiple iterations to verify the race condition is properly handled.
+	// With Serializable isolation, conflicting transactions will retry automatically.
+	const iterations = 5
+	const ordersPerIteration = 10
+
+	for iter := 0; iter < iterations; iter++ {
+		// Create a fresh billing cycle for each iteration
+		if iter > 0 {
+			// Close the previous cycle to create a new one
+			_, _, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+			require.NoError(t, err)
+		}
+
+		// Get the current billing cycle UUID before we start
+		currentCycleUUID := currentBillingCycleUUID(t, dbPool, restaurant.UUID)
+		require.False(t, currentCycleUUID.IsZero(), "should have an open billing cycle")
+
+		// Pre-create orders
+		orders := make([]models.Order, ordersPerIteration)
+		for i := 0; i < ordersPerIteration; i++ {
+			orders[i] = newTestOrder(t, orderRepo, restaurant, courier)
+		}
+
+		// Track which orders were in the snapshot at close time
+		var ordersInSnapshot []models.Order
+
+		g := errgroup.Group{}
+
+		// Goroutine: Close billing cycle at a random point
+		g.Go(func() error {
+			// Wait a bit to let some orders start adding
+			time.Sleep(time.Duration(iter%5) * time.Millisecond)
+
+			// Orders are read within the same serializable transaction, so the snapshot
+			// is guaranteed to be consistent with the closed billing cycle.
+			_, snapshotOrders, err := repo.CloseBillingCycle(ctx, restaurant.UUID)
+			ordersInSnapshot = snapshotOrders
+			return err
+		})
+
+		// Goroutines: Add orders concurrently
+		for i := 0; i < ordersPerIteration; i++ {
+			order := orders[i]
+			g.Go(func() error {
+				return repo.AddOrderToCurrentBillingCycle(ctx, restaurant.UUID, order.UUID())
+			})
+		}
+
+		err := g.Wait()
+		require.NoError(t, err)
+
+		// Now check: are there orders in the closed billing cycle that weren't in the snapshot?
+		ordersInClosedCycle, err := repo.BillingCycleOrders(ctx, currentCycleUUID)
+		require.NoError(t, err)
+
+		// Build sets for comparison
+		snapshotOrderUUIDs := make(map[string]bool)
+		for _, o := range ordersInSnapshot {
+			snapshotOrderUUIDs[o.UUID().String()] = true
+		}
+
+		closedCycleOrderUUIDs := make(map[string]bool)
+		for _, o := range ordersInClosedCycle {
+			closedCycleOrderUUIDs[o.UUID().String()] = true
+		}
+
+		// Find orders that are in the closed cycle but weren't in the snapshot
+		var missingFromSnapshot []string
+		for uuid := range closedCycleOrderUUIDs {
+			if !snapshotOrderUUIDs[uuid] {
+				missingFromSnapshot = append(missingFromSnapshot, uuid)
+			}
+		}
+
+		// This assertion verifies the race condition:
+		// If there are orders in the closed billing cycle that weren't in the snapshot,
+		// those orders would be "lost" - they're in a closed cycle but not in the statement.
+		assert.Empty(t, missingFromSnapshot,
+			"iteration %d: found %d orders in closed billing cycle that weren't in the snapshot - these orders would be lost!",
+			iter, len(missingFromSnapshot))
+
+		if len(missingFromSnapshot) > 0 {
+			t.Logf("Race condition detected in iteration %d: %d orders in snapshot, %d in closed cycle, %d missing",
+				iter, len(ordersInSnapshot), len(ordersInClosedCycle), len(missingFromSnapshot))
+			// Fail fast on first detection to make debugging easier
+			break
+		}
+	}
 }
 
 func newTestPartner(
