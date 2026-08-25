@@ -20,6 +20,7 @@ import (
 	"eats/backend/common/testutils"
 	ordersclient "eats/backend/orders/api/http/client"
 	"eats/backend/orders/app"
+	settlementclient "eats/backend/settlements/api/http/client"
 )
 
 func TestComponent_IssueReceipt(t *testing.T) {
@@ -348,11 +349,104 @@ func TestComponent_CourierDeliveryFlow(t *testing.T) {
 	// Courier reports delivery
 	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
 
+	// Close billing cycles for both partners after order is processed
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{restaurant.UUID.UUID})
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{courier.UUID.UUID})
+
 	t.Run("report_delivery_idempotent", func(t *testing.T) {
 		courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
 
 		assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+		// Close billing cycle again after idempotent delivery report.
+		// This should close the (empty) cycle 2 and create cycle 3.
+		restaurantPartnerUUID := settlementclient.LegalEntityUUID{restaurant.UUID.UUID}
+
+		closeResp, err := clients.Settlements.CloseBillingCycleWithResponse(ctx, settlementclient.CloseBillingCycleJSONRequestBody{
+			PartnerUuid: restaurantPartnerUUID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, http.StatusNoContent, closeResp.StatusCode())
+
+		// Verify no duplicate billing data.
+		billingCycles := getBillingCycles(ctx, t, clients, restaurantPartnerUUID)
+		require.Len(t, billingCycles, 3, "should have 3 cycles: open cycle 3, closed empty cycle 2, closed cycle 1")
+
+		for _, c := range billingCycles {
+			switch c.BillingCycleNumber {
+			case 1:
+				assert.True(t, c.Closed)
+			case 2:
+				assert.True(t, c.Closed)
+			case 3:
+				assert.False(t, c.Closed)
+			}
+		}
 	})
+}
+
+func TestComponent_CloseBillingCycle_Idempotent(t *testing.T) {
+	t.Parallel()
+	clients := newTestClients(t)
+
+	ctx := t.Context()
+	country := testutils.GenerateRandomCountry()
+
+	platform := createPlatformEntity(ctx, t, clients)
+	restaurant := onboardRestaurant(ctx, t, clients, platform.UUID, country)
+	assertRestaurantMenuPublished(ctx, t, clients, restaurant.UUID, restaurant.Data)
+
+	courier := registerCourierInCity(ctx, t, clients, platform.UUID, country, restaurant.Data.Address.City)
+	customerUUID := registerCustomerInCity(ctx, t, clients, country, restaurant.Data.Address.City)
+	_, cardNumber := createBankAccountWithBalance(ctx, t, decimal.NewFromInt(1000), common.NewUUIDv7().String())
+
+	orderUUID := placeOrder(ctx, t, clients, customerUUID, restaurant.UUID, restaurant.Data, country, cardNumber)
+	restaurantAcceptOrder(ctx, t, clients, restaurant.UUID, orderUUID)
+	courierAcceptDelivery(ctx, t, clients, courier.UUID, orderUUID)
+	restaurantMarkOrderReady(ctx, t, clients, restaurant.UUID, orderUUID)
+	courierReportPickup(ctx, t, clients, courier.UUID, orderUUID)
+	courierReportDelivered(ctx, t, clients, courier.UUID, orderUUID)
+
+	restaurantPartnerUUID := settlementclient.LegalEntityUUID{restaurant.UUID.UUID}
+
+	// First close: closes cycle 1 and opens cycle 2
+	closeResp, err := clients.Settlements.CloseBillingCycleWithResponse(ctx, settlementclient.CloseBillingCycleJSONRequestBody{
+		PartnerUuid: restaurantPartnerUUID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, closeResp.StatusCode())
+
+	cycles := getBillingCycles(ctx, t, clients, restaurantPartnerUUID)
+	require.Len(t, cycles, 2)
+
+	var cycle1 settlementclient.BillingCycle
+	for _, c := range cycles {
+		if c.BillingCycleNumber == 1 {
+			cycle1 = c
+		}
+	}
+	require.True(t, cycle1.Closed)
+
+	// Second close: should close the empty cycle 2 and create cycle 3
+	closeResp2, err := clients.Settlements.CloseBillingCycleWithResponse(ctx, settlementclient.CloseBillingCycleJSONRequestBody{
+		PartnerUuid: restaurantPartnerUUID,
+	})
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, closeResp2.StatusCode())
+
+	cycles = getBillingCycles(ctx, t, clients, restaurantPartnerUUID)
+	require.Len(t, cycles, 3)
+
+	for _, c := range cycles {
+		switch c.BillingCycleNumber {
+		case 1:
+			assert.True(t, c.Closed)
+		case 2:
+			assert.True(t, c.Closed)
+		case 3:
+			assert.False(t, c.Closed)
+		}
+	}
 }
 
 func TestComponent_CourierCityFiltering(t *testing.T) {
@@ -997,6 +1091,9 @@ func TestComponent_AmountsRegression(t *testing.T) {
 	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
 
 	assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{restaurantUUID.UUID})
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{courier.UUID.UUID})
 }
 
 func TestComponent_CreateQuoteValidationErrors(t *testing.T) {
@@ -1204,6 +1301,10 @@ func TestComponent_JapaneseYenNoDecimals(t *testing.T) {
 
 	courierReportDelivered(ctx, t, clients, courier.UUID, order.OrderUuid)
 	assertDeliveryReported(ctx, t, clients, courier.UUID, order.OrderUuid)
+
+	// Close billing cycles
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{restaurantUUID.UUID})
+	closeBillingCycleForPartner(ctx, t, clients, settlementclient.LegalEntityUUID{courier.UUID.UUID})
 }
 
 func TestComponent_OnboardingValidation(t *testing.T) {

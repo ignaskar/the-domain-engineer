@@ -900,6 +900,49 @@ func addCompanySuffix(name string) string {
 	return fmt.Sprintf("%s %s", name, companySuffixes[rand.Intn(len(companySuffixes))])
 }
 
+func closeBillingCycleForPartner(
+	ctx context.Context,
+	t *testing.T,
+	clients testClients,
+	partnerUUID domain.LegalEntityUUID,
+) {
+	t.Helper()
+
+	billingCycles := getBillingCycles(ctx, t, clients, partnerUUID)
+	assert.Len(t, billingCycles, 1, "Expected exactly one open billing cycle before closing")
+	openBillingCycle := billingCycles[0]
+	assert.False(t, openBillingCycle.Closed)
+	assert.Equal(t, 1, openBillingCycle.BillingCycleNumber)
+	billingCycleUUID := openBillingCycle.BillingCycleUuid
+
+	closeRequest := settlementclient.CloseBillingCycleJSONRequestBody{
+		PartnerUuid: partnerUUID,
+	}
+
+	resp, err := clients.Settlements.CloseBillingCycleWithResponse(ctx, closeRequest)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode())
+
+	billingCycles = getBillingCycles(ctx, t, clients, partnerUUID)
+	assert.Len(t, billingCycles, 2, "Expected a new open billing cycle after closing the previous one")
+
+	openBillingCycle = billingCycles[0]
+	assert.False(t, openBillingCycle.Closed)
+	assert.Equal(t, 2, openBillingCycle.BillingCycleNumber)
+
+	closedBillingCycle := billingCycles[1]
+
+	require.Equal(t, billingCycleUUID, closedBillingCycle.BillingCycleUuid)
+	require.True(t, closedBillingCycle.Closed)
+}
+
+func getBillingCycles(ctx context.Context, t *testing.T, clients testClients, partnerUUID domain.LegalEntityUUID) []settlementclient.BillingCycle {
+	billingCyclesResp, err := clients.Settlements.GetBillingCyclesByPartnerWithResponse(ctx, partnerUUID)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, billingCyclesResp.StatusCode())
+	return *billingCyclesResp.JSON200
+}
+
 func randomPrice() decimal.Decimal {
 	return decimal.New(int64(rand.Intn(200)+50), -1)
 }
