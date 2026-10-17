@@ -66,8 +66,8 @@ type RentalStatus string
 
 const (
 	RentalStarted        RentalStatus = "started"
-	RentalEnded          RentalStatus = "ended"
 	RentalDamageReported RentalStatus = "damage_reported"
+	RentalEnded          RentalStatus = "ended"
 )
 
 type Rental struct {
@@ -97,22 +97,22 @@ func (r *Rental) CustomerName() string { return r.customerName }
 func (r *Rental) Damage() string       { return r.damage }
 func (r *Rental) Status() RentalStatus { return r.status }
 
-func (r *Rental) EndRental() error {
-	if r.status == RentalEnded {
-		return errors.New("rental is already ended")
-	}
-	r.status = RentalEnded
-	return nil
-}
-
 func (r *Rental) ReportDamage(description string) error {
 	if r.status != RentalStarted {
-		return errors.New("cannot report damage: rental is not started")
+		return fmt.Errorf("cannot report damage: rental is %s", r.status)
 	}
 	if description == "" {
 		return errors.New("damage description is required")
 	}
 	r.damage = description
 	r.status = RentalDamageReported
+	return nil
+}
+
+func (r *Rental) EndRental() error {
+	if r.status == RentalEnded {
+		return errors.New("rental is already ended")
+	}
+	r.status = RentalEnded
 	return nil
 }
