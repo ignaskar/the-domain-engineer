@@ -65,8 +65,9 @@ func (v *Vehicle) RetireVehicle() error {
 type RentalStatus string
 
 const (
-	RentalStarted RentalStatus = "started"
-	RentalEnded   RentalStatus = "ended"
+	RentalStarted        RentalStatus = "started"
+	RentalEnded          RentalStatus = "ended"
+	RentalDamageReported RentalStatus = "damage_reported"
 )
 
 type Rental struct {
@@ -101,5 +102,17 @@ func (r *Rental) EndRental() error {
 		return errors.New("rental is already ended")
 	}
 	r.status = RentalEnded
+	return nil
+}
+
+func (r *Rental) ReportDamage(description string) error {
+	if r.status != RentalStarted {
+		return errors.New("cannot report damage: rental is not started")
+	}
+	if description == "" {
+		return errors.New("damage description is required")
+	}
+	r.damage = description
+	r.status = RentalDamageReported
 	return nil
 }
