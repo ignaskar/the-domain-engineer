@@ -4,9 +4,12 @@ package shared
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"eats/backend/common"
 )
 
 func TestNewAddress_ValidAddress(t *testing.T) {
@@ -37,7 +40,7 @@ func TestNewAddress_MissingLine1(t *testing.T) {
 
 	_, err := NewAddress("", "Apt 4", "12345", "New York", countryCode)
 
-	require.Error(t, err)
+	requireAddressError(t, err, "address-line1-required")
 }
 
 func TestNewAddress_MissingPostalCode(t *testing.T) {
@@ -45,7 +48,7 @@ func TestNewAddress_MissingPostalCode(t *testing.T) {
 
 	_, err := NewAddress("123 Main St", "Apt 4", "", "New York", countryCode)
 
-	require.Error(t, err)
+	requireAddressError(t, err, "address-postal-code-required")
 }
 
 func TestNewAddress_MissingCity(t *testing.T) {
@@ -53,13 +56,39 @@ func TestNewAddress_MissingCity(t *testing.T) {
 
 	_, err := NewAddress("123 Main St", "Apt 4", "12345", "", countryCode)
 
-	require.Error(t, err)
+	requireAddressError(t, err, "address-city-required")
 }
 
 func TestNewAddress_MissingCountryCode(t *testing.T) {
 	_, err := NewAddress("123 Main St", "Apt 4", "12345", "New York", CountryCode{})
 
-	require.Error(t, err)
+	requireAddressError(t, err, "address-country-code-required")
+}
+
+func TestNewAddress_MultipleFieldsMissing(t *testing.T) {
+	_, err := NewAddress("", "", "", "", CountryCode{})
+
+	var domainErr common.Error
+	require.True(t, errors.As(err, &domainErr))
+	require.Equal(t, "invalid-address", domainErr.ErrorSlug)
+	require.Len(t, domainErr.Details, 4)
+}
+
+func requireAddressError(t *testing.T, err error, expectedSlug string) {
+	t.Helper()
+
+	var domainErr common.Error
+	require.True(t, errors.As(err, &domainErr), "expected common.Error, got %T", err)
+	require.Equal(t, "invalid-address", domainErr.ErrorSlug)
+
+	found := false
+	for _, d := range domainErr.Details {
+		if d.ErrorSlug == expectedSlug {
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "expected detail with slug %q, got %v", expectedSlug, domainErr.Details)
 }
 
 func TestAddress_MarshalJSON(t *testing.T) {
