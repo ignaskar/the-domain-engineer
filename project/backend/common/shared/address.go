@@ -8,11 +8,11 @@ import (
 )
 
 type Address struct {
-	Line1       string      `json:"line_1,omitempty"`
-	Line2       string      `json:"line_2,omitempty"`
-	PostalCode  string      `json:"postal_code,omitempty"`
-	City        string      `json:"city,omitempty"`
-	CountryCode CountryCode `json:"country_code"`
+	line1       string
+	line2       string
+	postalCode  string
+	city        string
+	countryCode CountryCode
 }
 
 func NewAddress(line1, line2, postalCode, city string, countryCode CountryCode) (Address, error) {
@@ -33,16 +33,44 @@ func NewAddress(line1, line2, postalCode, city string, countryCode CountryCode) 
 	}
 
 	return Address{
-		Line1:       line1,
-		Line2:       line2,
-		PostalCode:  postalCode,
-		City:        city,
-		CountryCode: countryCode,
+		line1:       line1,
+		line2:       line2,
+		postalCode:  postalCode,
+		city:        city,
+		countryCode: countryCode,
 	}, nil
 }
 
 func (a Address) IsZero() bool {
 	return a == Address{}
+}
+
+func (a Address) Line1() string {
+	return a.line1
+}
+
+func (a Address) Line2() string {
+	return a.line2
+}
+
+func (a Address) PostalCode() string {
+	return a.postalCode
+}
+
+func (a Address) City() string {
+	return a.city
+}
+
+func (a Address) CountryCode() CountryCode {
+	return a.countryCode
+}
+
+type addressDbDTO struct {
+	Line1       string      `json:"line_1"`
+	Line2       string      `json:"line_2"`
+	PostalCode  string      `json:"postal_code"`
+	City        string      `json:"city"`
+	CountryCode CountryCode `json:"country_code"`
 }
 
 func (a *Address) Scan(src any) error {
@@ -72,4 +100,32 @@ func (a Address) Value() (driver.Value, error) {
 	}
 
 	return string(data), nil
+}
+
+func (a Address) MarshalJSON() ([]byte, error) {
+	m := addressDbDTO{
+		Line1:       a.line1,
+		Line2:       a.line2,
+		PostalCode:  a.postalCode,
+		City:        a.city,
+		CountryCode: a.countryCode,
+	}
+
+	return json.Marshal(m)
+}
+
+func (a *Address) UnmarshalJSON(data []byte) error {
+	m := addressDbDTO{}
+	err := json.Unmarshal(data, &m)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling %T from json: %w", a, err)
+	}
+
+	a.line1 = m.Line1
+	a.line2 = m.Line2
+	a.postalCode = m.PostalCode
+	a.city = m.City
+	a.countryCode = m.CountryCode
+
+	return nil
 }
