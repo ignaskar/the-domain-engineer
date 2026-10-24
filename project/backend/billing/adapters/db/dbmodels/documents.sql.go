@@ -28,13 +28,10 @@ func (q *Queries) NextDocumentNumber(ctx context.Context, prefix string) (int32,
 
 const saveDocument = `-- name: SaveDocument :exec
 INSERT INTO billing.documents (
-    document_uuid,
-    document_number,
-    series_prefix
-) VALUES (
-    $1, 
-    $2,
-    $3
+    document_uuid, document_number, series_prefix
+)
+VALUES (
+    $1, $2, $3
 )
 `
 

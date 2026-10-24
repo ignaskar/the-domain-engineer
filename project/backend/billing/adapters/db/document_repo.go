@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jackc/pgx/v5"
+	pgx "github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"eats/backend/billing/adapters/db/dbmodels"
@@ -33,34 +33,38 @@ func (r *PostgresRepository) CreateDocument(
 ) (domain.DocumentUUID, error) {
 	var docUUID domain.DocumentUUID
 
+	// ReadCommitted is safe here: NextDocumentNumber uses "last_number = last_number + 1",
+	// so PostgreSQL re-evaluates the expression on the current row value after acquiring
+	// the row lock. There is no lost update risk because no value is read into Go memory
+	// and written back. RepeatableRead would cause serialization errors under contention.
 	err := common.UpdateInReadCommittedTx(ctx, r.db, func(ctx context.Context, tx pgx.Tx) error {
 		queries := dbmodels.New(tx)
 
-		n, err := queries.NextDocumentNumber(ctx, series.String())
+		nextNumber, err := queries.NextDocumentNumber(ctx, series.String())
 		if err != nil {
-			return fmt.Errorf("failed to get next document number: %w", err)
+			return fmt.Errorf("error getting next document number: %w", err)
 		}
 
-		dn, err := domain.NewDocumentNumber(series, int(n))
+		docNumber, err := domain.NewDocumentNumber(series, int(nextNumber))
 		if err != nil {
-			return fmt.Errorf("failed to create document number: %w", err)
+			return fmt.Errorf("error creating document number: %w", err)
 		}
 
-		dr, err := createFunc(dn)
+		record, err := createFunc(docNumber)
 		if err != nil {
-			return fmt.Errorf("failed to create document record: %w", err)
+			return fmt.Errorf("error creating document: %w", err)
 		}
+
+		docUUID = record.UUID
 
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
-			DocumentUuid:   dr.UUID,
-			DocumentNumber: dn.String(),
+			DocumentUuid:   record.UUID,
+			DocumentNumber: docNumber.String(),
 			SeriesPrefix:   series.String(),
 		})
 		if err != nil {
-			return fmt.Errorf("failed to save document: %w", err)
+			return fmt.Errorf("error saving document: %w", err)
 		}
-
-		docUUID = dr.UUID
 
 		return nil
 	})
