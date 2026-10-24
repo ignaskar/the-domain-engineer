@@ -25,9 +25,18 @@ type BankAccount struct {
 }
 
 func NewBankAccount(id, owner string, transfers []Transfer) (*BankAccount, error) {
-	// TODO: validate id, owner, and transfers.
+	if id == "" {
+		return nil, errors.New("empty id")
+	}
+	if owner == "" {
+		return nil, errors.New("empty owner")
+	}
+
 	var balance int64
-	for _, transfer := range transfers {
+	for i, transfer := range transfers {
+		if transfer.IsZero() {
+			return nil, fmt.Errorf("%d transfer is zero", i)
+		}
 		balance += transfer.amount
 	}
 
@@ -52,7 +61,9 @@ func (a *BankAccount) Balance() int64 {
 }
 
 func (a *BankAccount) Deposit(amount int64) error {
-	// TODO: reject non-positive amounts.
+	if amount <= 0 {
+		return errors.New("deposit amount must be positive")
+	}
 	a.balance += amount
 
 	a.transfers = append(a.transfers, Transfer{
@@ -64,7 +75,12 @@ func (a *BankAccount) Deposit(amount int64) error {
 }
 
 func (a *BankAccount) Withdraw(amount int64) error {
-	// TODO: reject non-positive amounts and prevent overdraft.
+	if amount <= 0 {
+		return errors.New("withdraw amount must be positive")
+	}
+	if amount > a.balance {
+		return errors.New("insufficient funds")
+	}
 	a.balance -= amount
 
 	a.transfers = append(a.transfers, Transfer{
