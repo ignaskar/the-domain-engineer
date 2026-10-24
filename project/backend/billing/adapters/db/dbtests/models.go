@@ -9,9 +9,10 @@ import (
 )
 
 type BillingDocument struct {
-	DocumentUuid   pgtype.UUID
-	DocumentNumber string
-	SeriesPrefix   string
+	DocumentUuid      pgtype.UUID
+	DocumentNumber    string
+	SeriesPrefix      string
+	ExternalReference pgtype.Text
 }
 
 type BillingDocumentSeries struct {

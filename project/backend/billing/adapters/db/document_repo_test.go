@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -72,4 +73,67 @@ func TestCreateDocument_ConcurrentDocumentNumbers(t *testing.T) {
 
 		assert.Equal(t, i+1, int(number))
 	}
+}
+
+func TestCreateDocument_ExternalReference(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := testutils.NewDB(t)
+
+	repo := db.NewPostgresRepository(database)
+
+	seriesStr := common.NewUUIDv7().String()
+	series, err := domain.NewDocumentSeries(seriesStr)
+	require.NoError(t, err)
+
+	q := dbtests.New(database)
+	err = q.SaveDocumentSeries(ctx, seriesStr)
+	require.NoError(t, err)
+
+	externalRef := uuid.NewString()
+
+	// First create should succeed.
+	docUUID, err := repo.CreateDocument(
+		ctx,
+		series,
+		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
+			return db.DocumentRecord{
+				UUID:              domain.DocumentUUID{UUID: common.NewUUIDv7()},
+				ExternalReference: &externalRef,
+			}, nil
+		},
+	)
+	require.NoError(t, err)
+	require.False(t, docUUID.IsZero())
+
+	// Saving the document with the same external reference should be idempotent.
+	doc2UUID, err := repo.CreateDocument(
+		ctx,
+		series,
+		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
+			return db.DocumentRecord{
+				UUID:              domain.DocumentUUID{UUID: common.NewUUIDv7()},
+				ExternalReference: &externalRef,
+			}, nil
+		},
+	)
+	require.NoError(t, err)
+
+	assert.Equal(t, docUUID, doc2UUID, "expected the same document UUID to be returned for idempotent create")
+
+	// Verify only one document was created.
+	docs, err := q.GetDocumentsBySeriesPrefix(ctx, seriesStr)
+	require.NoError(t, err)
+	assert.Len(t, docs, 1)
+
+	// The duplicate call must not use up a document number.
+	var lastNumber int
+	err = database.QueryRow(
+		ctx,
+		"SELECT last_number FROM billing.document_series WHERE prefix = $1",
+		seriesStr,
+	).Scan(&lastNumber)
+	require.NoError(t, err)
+	assert.Equal(t, 1, lastNumber, "the duplicate call used up a document number: the series has a gap now")
 }
