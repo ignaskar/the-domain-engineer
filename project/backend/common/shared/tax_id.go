@@ -11,16 +11,20 @@ type TaxID struct {
 	taxID string
 }
 
+const minTaxIDLength = 5
+
 func NewTaxID(taxID string) (TaxID, error) {
 	if taxID == "" {
-		return TaxID{}, errors.New("tax ID cannot be empty")
+		return TaxID{}, errors.New("taxID is empty")
 	}
-	if len(taxID) < 5 {
-		return TaxID{}, errors.New("tax ID must be at least 5 characters long")
+
+	if len(taxID) < minTaxIDLength {
+		return TaxID{}, errors.New("taxID is too short")
 	}
+
 	for _, r := range taxID {
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != ' ' && r != '-' {
-			return TaxID{}, errors.New("tax ID can contain only letters, digits, space or a dash")
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '-' && r != ' ' {
+			return TaxID{}, errors.New("taxID contains invalid characters")
 		}
 	}
 
