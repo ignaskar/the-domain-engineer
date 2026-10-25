@@ -2,11 +2,31 @@ package shared
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
+	"unicode"
 )
 
 type TaxID struct {
 	taxID string
+}
+
+func NewTaxID(taxID string) (TaxID, error) {
+	if taxID == "" {
+		return TaxID{}, errors.New("tax ID cannot be empty")
+	}
+	if len(taxID) < 5 {
+		return TaxID{}, errors.New("tax ID must be at least 5 characters long")
+	}
+	for _, r := range taxID {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != ' ' && r != '-' {
+			return TaxID{}, errors.New("tax ID can contain only letters, digits, space or a dash")
+		}
+	}
+
+	return TaxID{
+		taxID: taxID,
+	}, nil
 }
 
 func (t TaxID) IsZero() bool {
