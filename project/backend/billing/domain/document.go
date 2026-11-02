@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -10,6 +11,15 @@ import (
 	"eats/backend/common"
 	"eats/backend/common/shared"
 )
+
+type DocumentRepository interface {
+	DocumentByUUID(ctx context.Context, docUUID DocumentUUID) (*Document, error)
+	CreateDocument(
+		ctx context.Context,
+		series DocumentSeries,
+		createFunc func(documentNumber DocumentNumber) (*Document, error),
+	) (DocumentUUID, error)
+}
 
 type DocumentType struct {
 	common.Enum[DocumentTypeValues]
