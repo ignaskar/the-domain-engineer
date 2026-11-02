@@ -9,9 +9,60 @@ type PriceBreakdownSummary struct {
 	taxes       []TaxSummary
 }
 
+type taxRateKey struct {
+	rate    string
+	taxType string
+}
+
+func (t TaxRate) key() taxRateKey {
+	return taxRateKey{
+		rate:    t.rate.String(),
+		taxType: t.taxType.String(),
+	}
+}
+
 func summarizeLineItems(lineItems []LineItem) PriceBreakdownSummary {
-	// TODO implement me
-	return PriceBreakdownSummary{}
+	var netAmount decimal.Decimal
+	var taxAmount decimal.Decimal
+	var grossAmount decimal.Decimal
+
+	taxSummaryGroups := make(map[taxRateKey]*TaxSummary)
+
+	for _, li := range lineItems {
+		netAmount = netAmount.Add(li.PriceBreakdown().NetAmount())
+		taxAmount = taxAmount.Add(li.PriceBreakdown().TaxAmount())
+		grossAmount = grossAmount.Add(li.PriceBreakdown().GrossAmount())
+
+		taxRateKey := li.PriceBreakdown().TaxRate().key()
+
+		taxSummary, ok := taxSummaryGroups[taxRateKey]
+		if !ok {
+			taxSummaryGroups[taxRateKey] = &TaxSummary{
+				taxRate:   li.PriceBreakdown().TaxRate(),
+				netAmount: li.PriceBreakdown().NetAmount(),
+				taxAmount: li.PriceBreakdown().TaxAmount(),
+			}
+			continue
+		}
+
+		taxSummary.add(li.PriceBreakdown())
+	}
+
+	var taxSummaries []TaxSummary
+	for _, g := range taxSummaryGroups {
+		taxSummaries = append(taxSummaries, TaxSummary{
+			taxRate:   g.taxRate,
+			netAmount: g.netAmount,
+			taxAmount: g.taxAmount,
+		})
+	}
+
+	return PriceBreakdownSummary{
+		netAmount:   netAmount,
+		taxAmount:   taxAmount,
+		grossAmount: grossAmount,
+		taxes:       taxSummaries,
+	}
 }
 
 func (p PriceBreakdownSummary) NetAmount() decimal.Decimal {
@@ -46,4 +97,9 @@ func (t TaxSummary) NetAmount() decimal.Decimal {
 
 func (t TaxSummary) TaxAmount() decimal.Decimal {
 	return t.taxAmount
+}
+
+func (t *TaxSummary) add(breakdown PriceBreakdown) {
+	t.netAmount = t.netAmount.Add(breakdown.NetAmount())
+	t.taxAmount = t.taxAmount.Add(breakdown.TaxAmount())
 }
