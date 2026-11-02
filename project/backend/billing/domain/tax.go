@@ -198,6 +198,13 @@ func (t TaxRate) TaxType() TaxType {
 	return t.taxType
 }
 
+func (t TaxRate) key() taxRateKey {
+	return taxRateKey{
+		rate:    t.rate.String(),
+		taxType: t.taxType.String(),
+	}
+}
+
 // roundInCurrency rounds the given amount according to the decimal places of the currency.
 // Different currencies have different rules for decimal places (e.g., JPY has 0, USD has 2).
 func roundInCurrency(amount decimal.Decimal, currency shared.Currency) decimal.Decimal {

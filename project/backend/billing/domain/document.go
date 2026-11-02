@@ -65,7 +65,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 		lineItems = append(lineItems, lineItem)
 	}
 
-	priceBreakdownSummary := summarizeLineItems(lineItems)
+	summary := summarizeLineItems(lineItems)
 
 	return &Document{
 		uuid:              DocumentUUID{common.NewUUIDv7()},
@@ -77,7 +77,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 		seller:            data.Seller,
 		buyer:             data.Buyer,
 		lineItems:         lineItems,
-		summary:           priceBreakdownSummary,
+		summary:           summary,
 	}, nil
 }
 
