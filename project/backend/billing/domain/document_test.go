@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -32,8 +33,12 @@ func TestNewReceipt_ValidReceipt(t *testing.T) {
 
 	require.Len(t, doc.LineItems(), len(data.LineItems))
 	for i, want := range data.LineItems {
-		assert.Equal(t, want.Name, doc.LineItems()[i].Name(), "line item %d name", i)
-		assert.Equal(t, want.Quantity, doc.LineItems()[i].Quantity(), "line item %d quantity", i)
+		got := doc.LineItems()[i]
+		assert.Equal(t, want.Name, got.Name(), "line item %d name", i)
+		assert.Equal(t, want.Quantity, got.Quantity(), "line item %d quantity", i)
+		assert.False(t, got.PriceBreakdown().TaxRate().IsZero(), "line item %d should have a tax rate", i)
+		assert.True(t, got.PriceBreakdown().UnitNetAmount().Equal(want.UnitAmount.Amount()),
+			"line item %d unit net should equal input net amount", i)
 	}
 }
 
@@ -122,6 +127,13 @@ func TestNewReceipt_ValidationErrors(t *testing.T) {
 			},
 			wantErr: "quantity must be positive",
 		},
+		{
+			name: "line_item_negative_unit_amount_rejected",
+			mutate: func(t *testing.T, d *domain.NewDocumentData) {
+				d.LineItems[0].UnitAmount = shared.NewNetAmount(decimal.NewFromFloat(-1.00))
+			},
+			wantErr: "unit amount can't be negative",
+		},
 	}
 
 	for _, tt := range tests {
@@ -157,12 +169,14 @@ func validReceiptData(t *testing.T) domain.NewDocumentData {
 		Buyer:             buyer,
 		LineItems: []domain.NewLineItemData{
 			{
-				Name:     "Cheeseburger",
-				Quantity: 2,
+				Name:       "Cheeseburger",
+				Quantity:   2,
+				UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(10.00)),
 			},
 			{
-				Name:     "Fries",
-				Quantity: 1,
+				Name:       "Fries",
+				Quantity:   1,
+				UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(3.50)),
 			},
 		},
 	}
