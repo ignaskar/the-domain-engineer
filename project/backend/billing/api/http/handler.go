@@ -15,31 +15,28 @@ type Handler struct {
 }
 
 func (h Handler) CreateReceipt(ctx context.Context, request CreateReceiptRequestObject) (CreateReceiptResponseObject, error) {
-	dd, err := newDocumentDetailsFromCreateDocument(*request.Body)
+	details, err := newDocumentDetailsFromCreateDocument(*request.Body)
 	if err != nil {
 		return nil, err
 	}
 
 	cmd := command.IssueReceipt{
-		DocumentData: dd,
+		DocumentData: details,
 	}
-
-	docUUID, err := h.commands.IssueReceipt(ctx, cmd)
+	uuid, err := h.commands.IssueReceipt(ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
 
 	return CreateReceipt201JSONResponse{
-		DocumentUuid: docUUID,
+		DocumentUuid: uuid,
 	}, nil
 }
 
 func (h Handler) GetDocument(ctx context.Context, request GetDocumentRequestObject) (GetDocumentResponseObject, error) {
-	query := query.GetDocumentByUUID{
+	doc, err := h.queries.GetDocumentByUUID(ctx, query.GetDocumentByUUID{
 		DocumentUUID: request.DocumentUuid,
-	}
-
-	doc, err := h.queries.GetDocumentByUUID(ctx, query)
+	})
 	if err != nil {
 		return nil, err
 	}
