@@ -7,6 +7,8 @@ import (
 
 	"eats/backend/common"
 	"eats/backend/common/shared"
+
+	"github.com/shopspring/decimal"
 )
 
 type DocumentType struct {
@@ -50,7 +52,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 
 	lineItems := make([]LineItem, 0, len(data.LineItems))
 	for _, lid := range data.LineItems {
-		lineItem, err := newLineItem(lid)
+		lineItem, err := newLineItem(lid, data.Currency)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create line item for document: %w", err)
 		}
@@ -80,8 +82,9 @@ type NewDocumentData struct {
 }
 
 type NewLineItemData struct {
-	Name     string
-	Quantity int
+	Name       string
+	Quantity   int
+	UnitAmount shared.LineAmount
 }
 
 type DocumentUUID struct {
@@ -141,12 +144,17 @@ type LineItemUUID struct {
 }
 
 type LineItem struct {
-	uuid     LineItemUUID
-	name     string
-	quantity int
+	uuid      LineItemUUID
+	name      string
+	quantity  int
+	breakdown PriceBreakdown
 }
 
-func newLineItem(data NewLineItemData) (LineItem, error) {
+func (l LineItem) PriceBreakdown() PriceBreakdown {
+	return l.breakdown
+}
+
+func newLineItem(data NewLineItemData, currency shared.Currency) (LineItem, error) {
 	if data.Name == "" {
 		return LineItem{}, errors.New("name can't be empty")
 	}
@@ -155,10 +163,26 @@ func newLineItem(data NewLineItemData) (LineItem, error) {
 		return LineItem{}, errors.New("quantity must be positive")
 	}
 
+	taxRate, err := NewTaxRate(decimal.NewFromFloat(0.10), TaxTypeSalesTax)
+	if err != nil {
+		return LineItem{}, fmt.Errorf("cannot create tax rate: %w", err)
+	}
+
+	var breakdown PriceBreakdown
+	if data.UnitAmount.IsGross() {
+		breakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	} else {
+		breakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+	}
+	if err != nil {
+		return LineItem{}, err
+	}
+
 	return LineItem{
-		uuid:     LineItemUUID{common.NewUUIDv7()},
-		name:     data.Name,
-		quantity: data.Quantity,
+		uuid:      LineItemUUID{common.NewUUIDv7()},
+		name:      data.Name,
+		quantity:  data.Quantity,
+		breakdown: breakdown,
 	}, nil
 }
 

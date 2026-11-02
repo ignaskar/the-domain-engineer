@@ -1,8 +1,6 @@
 package domain
 
 import (
-	"errors"
-
 	"github.com/shopspring/decimal"
 
 	"eats/backend/common"
@@ -56,8 +54,33 @@ func NewPriceBreakdownFromNetAmount(
 	currency shared.Currency,
 	quantity int,
 ) (PriceBreakdown, error) {
-	// TODO implement me
-	return PriceBreakdown{}, errors.New("not implemented")
+	if rate.IsZero() {
+		return PriceBreakdown{}, common.NewInvalidInputError("tax-rate-zero", "tax rate can't be zero")
+	}
+	if unitNetAmount.IsNegative() {
+		return PriceBreakdown{}, common.NewInvalidInputError("unit-net-amount-negative", "unit amount can't be negative")
+	}
+	if quantity < 1 {
+		return PriceBreakdown{}, common.NewInvalidInputError("quantity-not-positive", "quantity must be positive")
+	}
+
+	unitNetAmount = roundInCurrency(unitNetAmount, currency)
+	unitTaxAmount := roundInCurrency(unitNetAmount.Mul(rate.Rate()), currency)
+	unitGrossAmount := unitNetAmount.Add(unitTaxAmount)
+
+	netAmount := unitNetAmount.Mul(decimal.NewFromInt(int64(quantity)))
+	taxAmount := unitTaxAmount.Mul(decimal.NewFromInt(int64(quantity)))
+	grossAmount := unitGrossAmount.Mul(decimal.NewFromInt(int64(quantity)))
+
+	return PriceBreakdown{
+		rate:            rate,
+		unitNetAmount:   unitNetAmount,
+		unitTaxAmount:   unitTaxAmount,
+		unitGrossAmount: unitGrossAmount,
+		netAmount:       netAmount,
+		taxAmount:       taxAmount,
+		grossAmount:     grossAmount,
+	}, nil
 }
 
 func NewPriceBreakdownFromGrossAmount(
@@ -66,8 +89,33 @@ func NewPriceBreakdownFromGrossAmount(
 	currency shared.Currency,
 	quantity int,
 ) (PriceBreakdown, error) {
-	// TODO implement me
-	return PriceBreakdown{}, errors.New("not implemented")
+	if rate.IsZero() {
+		return PriceBreakdown{}, common.NewInvalidInputError("tax-rate-zero", "tax rate can't be zero")
+	}
+	if unitGrossAmount.IsNegative() {
+		return PriceBreakdown{}, common.NewInvalidInputError("unit-gross-amount-negative", "unit amount can't be negative")
+	}
+	if quantity < 1 {
+		return PriceBreakdown{}, common.NewInvalidInputError("quantity-not-positive", "quantity must be positive")
+	}
+
+	unitGrossAmount = roundInCurrency(unitGrossAmount, currency)
+	unitNetAmount := roundInCurrency(unitGrossAmount.Div(decimal.NewFromInt(1).Add(rate.Rate())), currency)
+	unitTaxAmount := unitGrossAmount.Sub(unitNetAmount)
+
+	netAmount := unitNetAmount.Mul(decimal.NewFromInt(int64(quantity)))
+	taxAmount := unitTaxAmount.Mul(decimal.NewFromInt(int64(quantity)))
+	grossAmount := unitGrossAmount.Mul(decimal.NewFromInt(int64(quantity)))
+
+	return PriceBreakdown{
+		rate:            rate,
+		unitNetAmount:   unitNetAmount,
+		unitTaxAmount:   unitTaxAmount,
+		unitGrossAmount: unitGrossAmount,
+		netAmount:       netAmount,
+		taxAmount:       taxAmount,
+		grossAmount:     grossAmount,
+	}, nil
 }
 
 func (t PriceBreakdown) TaxRate() TaxRate {
