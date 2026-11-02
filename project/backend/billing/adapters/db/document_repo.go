@@ -48,46 +48,46 @@ func (r *PostgresRepository) CreateDocument(
 			return fmt.Errorf("error creating document number: %w", err)
 		}
 
-		document, err := createFunc(docNumber)
+		doc, err := createFunc(docNumber)
 		if err != nil {
 			return fmt.Errorf("error creating document: %w", err)
 		}
-		docUUID = document.UUID()
 
-		if document.ExternalReference() != nil {
-			externalReference = *document.ExternalReference()
+		docUUID = doc.UUID()
+		if doc.ExternalReference() != nil {
+			externalReference = *doc.ExternalReference()
 		}
 
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
-			DocumentUuid:      document.UUID(),
-			ExternalReference: document.ExternalReference(),
-			DocumentNumber:    docNumber.String(),
+			DocumentUuid:      doc.UUID(),
+			ExternalReference: doc.ExternalReference(),
+			DocumentNumber:    doc.DocumentNumber().String(),
 			SeriesPrefix:      series.String(),
-			DocumentType:      document.DocumentType(),
-			IssueDate:         document.IssueDate(),
-			Currency:          document.Currency(),
-			TotalNetAmount:    document.Summary().NetAmount(),
-			TotalTaxAmount:    document.Summary().TaxAmount(),
-			TotalGrossAmount:  document.Summary().GrossAmount(),
+			DocumentType:      doc.DocumentType(),
+			IssueDate:         doc.IssueDate(),
+			Currency:          doc.Currency(),
+			TotalNetAmount:    doc.Summary().NetAmount(),
+			TotalTaxAmount:    doc.Summary().TaxAmount(),
+			TotalGrossAmount:  doc.Summary().GrossAmount(),
 		})
 		if err != nil {
 			return fmt.Errorf("error saving document: %w", err)
 		}
 
-		for _, li := range document.LineItems() {
-			err = queries.SaveDocumentLineItem(ctx, dbmodels.SaveDocumentLineItemParams{
-				LineItemUuid:    li.UUID(),
-				DocumentUuid:    document.UUID(),
-				Name:            li.Name(),
-				Quantity:        int32(li.Quantity()),
-				UnitNetAmount:   li.PriceBreakdown().UnitNetAmount(),
-				UnitTaxAmount:   li.PriceBreakdown().UnitTaxAmount(),
-				UnitGrossAmount: li.PriceBreakdown().UnitGrossAmount(),
-				NetAmount:       li.PriceBreakdown().NetAmount(),
-				TaxAmount:       li.PriceBreakdown().TaxAmount(),
-				GrossAmount:     li.PriceBreakdown().GrossAmount(),
-				TaxRate:         li.PriceBreakdown().TaxRate().Rate(),
-				TaxType:         li.PriceBreakdown().TaxRate().TaxType(),
+		for _, lineItem := range doc.LineItems() {
+			err := queries.SaveDocumentLineItem(ctx, dbmodels.SaveDocumentLineItemParams{
+				LineItemUuid:    lineItem.UUID(),
+				DocumentUuid:    doc.UUID(),
+				Name:            lineItem.Name(),
+				Quantity:        int32(lineItem.Quantity()),
+				UnitNetAmount:   lineItem.PriceBreakdown().UnitNetAmount(),
+				UnitTaxAmount:   lineItem.PriceBreakdown().UnitTaxAmount(),
+				UnitGrossAmount: lineItem.PriceBreakdown().UnitGrossAmount(),
+				NetAmount:       lineItem.PriceBreakdown().NetAmount(),
+				TaxAmount:       lineItem.PriceBreakdown().TaxAmount(),
+				GrossAmount:     lineItem.PriceBreakdown().GrossAmount(),
+				TaxRate:         lineItem.PriceBreakdown().TaxRate().Rate(),
+				TaxType:         lineItem.PriceBreakdown().TaxRate().TaxType(),
 			})
 			if err != nil {
 				return fmt.Errorf("error saving document line item: %w", err)
@@ -117,73 +117,6 @@ func (r *PostgresRepository) CreateDocument(
 	return docUUID, nil
 }
 
-func (r *PostgresRepository) DocumentByUUID(ctx context.Context, uuid domain.DocumentUUID) (*domain.Document, error) {
-	queries := dbmodels.New(r.db)
-
-	dbDocument, err := queries.GetDocument(ctx, uuid)
-	if err != nil {
-		return nil, fmt.Errorf("error getting document by uuid: %w", err)
-	}
-
-	dbLineItems, err := queries.GetDocumentLineItems(ctx, uuid)
-	if err != nil {
-		return nil, fmt.Errorf("error getting document line items: %w", err)
-	}
-
-	var lineItems []domain.LineItem
-	for _, li := range dbLineItems {
-		breakdown := domain.UnmarshalPriceBreakdown(
-			domain.UnmarshalTaxRate(li.TaxRate, li.TaxType),
-			li.UnitNetAmount,
-			li.UnitTaxAmount,
-			li.UnitGrossAmount,
-			li.NetAmount,
-			li.TaxAmount,
-			li.GrossAmount,
-		)
-
-		lineItems = append(lineItems, domain.UnmarshalLineItem(
-			li.LineItemUuid,
-			li.Name,
-			breakdown,
-			int(li.Quantity),
-		))
-	}
-
-	documentSeries, err := domain.NewDocumentSeries(dbDocument.SeriesPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("error creating document series: %w", err)
-	}
-
-	documentNumber, err := domain.UnmarshalDocumentNumber(
-		documentSeries,
-		dbDocument.DocumentNumber,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("error creating document number: %w", err)
-	}
-
-	breakdownSummary := domain.UnmarshalPriceBreakdownSummary(
-		dbDocument.TotalNetAmount,
-		dbDocument.TotalTaxAmount,
-		dbDocument.TotalGrossAmount,
-		nil,
-	)
-
-	return domain.UnmarshalDocument(
-		dbDocument.DocumentUuid,
-		dbDocument.ExternalReference,
-		documentNumber,
-		dbDocument.DocumentType,
-		dbDocument.IssueDate,
-		dbDocument.Currency,
-		domain.LegalEntity{},
-		domain.LegalEntity{},
-		lineItems,
-		breakdownSummary,
-	), nil
-}
-
 func (r *PostgresRepository) getDocumentByExternalReference(ctx context.Context, externalRef string) (dbmodels.BillingDocument, error) {
 	queries := dbmodels.New(r.db)
 
@@ -193,4 +126,68 @@ func (r *PostgresRepository) getDocumentByExternalReference(ctx context.Context,
 	}
 
 	return dbDoc, nil
+}
+
+func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.DocumentUUID) (*domain.Document, error) {
+	queries := dbmodels.New(r.db)
+
+	dbDoc, err := queries.GetDocument(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting document by uuid: %w", err)
+	}
+
+	dbLineItems, err := queries.GetDocumentLineItems(ctx, docUUID)
+	if err != nil {
+		return nil, fmt.Errorf("error getting document line items: %w", err)
+	}
+
+	var lineItems []domain.LineItem
+	for _, dbLineItem := range dbLineItems {
+		taxRate := domain.UnmarshalTaxRate(dbLineItem.TaxRate, dbLineItem.TaxType)
+		breakdown := domain.UnmarshalPriceBreakdown(
+			taxRate,
+			dbLineItem.UnitNetAmount,
+			dbLineItem.UnitTaxAmount,
+			dbLineItem.UnitGrossAmount,
+			dbLineItem.NetAmount,
+			dbLineItem.TaxAmount,
+			dbLineItem.GrossAmount,
+		)
+
+		lineItems = append(lineItems, domain.UnmarshalLineItem(
+			dbLineItem.LineItemUuid,
+			dbLineItem.Name,
+			breakdown,
+			int(dbLineItem.Quantity),
+		))
+	}
+
+	summary := domain.UnmarshalPriceBreakdownSummary(
+		dbDoc.TotalNetAmount,
+		dbDoc.TotalTaxAmount,
+		dbDoc.TotalGrossAmount,
+		nil,
+	)
+
+	docSeries, err := domain.NewDocumentSeries(dbDoc.SeriesPrefix)
+
+	docNumber, err := domain.UnmarshalDocumentNumber(docSeries, dbDoc.DocumentNumber)
+	if err != nil {
+		return nil, fmt.Errorf("error creating document number: %w", err)
+	}
+
+	doc := domain.UnmarshalDocument(
+		dbDoc.DocumentUuid,
+		dbDoc.ExternalReference,
+		docNumber,
+		dbDoc.DocumentType,
+		dbDoc.IssueDate,
+		dbDoc.Currency,
+		domain.LegalEntity{},
+		domain.LegalEntity{},
+		lineItems,
+		summary,
+	)
+
+	return doc, nil
 }
