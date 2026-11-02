@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"eats/backend/common"
 	"eats/backend/common/shared"
-
-	"github.com/shopspring/decimal"
 )
 
 type DocumentType struct {
@@ -22,6 +22,12 @@ func (DocumentTypeValues) Values() []string {
 }
 
 var DocumentTypeReceipt = common.MustEnum[DocumentType]("receipt")
+
+// defaultTaxRate is the hardcoded 10% sales tax for our single-country MVP.
+var defaultTaxRate = TaxRate{
+	rate:    decimal.NewFromFloat(0.10),
+	taxType: TaxTypeSalesTax,
+}
 
 func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, error) {
 	if data.Buyer.TaxID() != nil {
@@ -52,7 +58,7 @@ func NewReceipt(data NewDocumentData, docNumber DocumentNumber) (*Document, erro
 
 	lineItems := make([]LineItem, 0, len(data.LineItems))
 	for _, lid := range data.LineItems {
-		lineItem, err := newLineItem(lid, data.Currency)
+		lineItem, err := newLineItem(lid, data.Currency, defaultTaxRate)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create line item for document: %w", err)
 		}
@@ -146,15 +152,11 @@ type LineItemUUID struct {
 type LineItem struct {
 	uuid      LineItemUUID
 	name      string
-	quantity  int
 	breakdown PriceBreakdown
+	quantity  int
 }
 
-func (l LineItem) PriceBreakdown() PriceBreakdown {
-	return l.breakdown
-}
-
-func newLineItem(data NewLineItemData, currency shared.Currency) (LineItem, error) {
+func newLineItem(data NewLineItemData, currency shared.Currency, taxRate TaxRate) (LineItem, error) {
 	if data.Name == "" {
 		return LineItem{}, errors.New("name can't be empty")
 	}
@@ -163,26 +165,28 @@ func newLineItem(data NewLineItemData, currency shared.Currency) (LineItem, erro
 		return LineItem{}, errors.New("quantity must be positive")
 	}
 
-	taxRate, err := NewTaxRate(decimal.NewFromFloat(0.10), TaxTypeSalesTax)
-	if err != nil {
-		return LineItem{}, fmt.Errorf("cannot create tax rate: %w", err)
+	if data.UnitAmount.Amount().IsNegative() {
+		return LineItem{}, errors.New("unit amount can't be negative")
 	}
 
-	var breakdown PriceBreakdown
+	var priceBreakdown PriceBreakdown
+	var err error
+
 	if data.UnitAmount.IsGross() {
-		breakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+		priceBreakdown, err = NewPriceBreakdownFromGrossAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
 	} else {
-		breakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
+		priceBreakdown, err = NewPriceBreakdownFromNetAmount(taxRate, data.UnitAmount.Amount(), currency, data.Quantity)
 	}
+
 	if err != nil {
-		return LineItem{}, err
+		return LineItem{}, fmt.Errorf("failed to create price breakdown: %w", err)
 	}
 
 	return LineItem{
 		uuid:      LineItemUUID{common.NewUUIDv7()},
 		name:      data.Name,
+		breakdown: priceBreakdown,
 		quantity:  data.Quantity,
-		breakdown: breakdown,
 	}, nil
 }
 
@@ -196,4 +200,8 @@ func (l LineItem) Name() string {
 
 func (l LineItem) Quantity() int {
 	return l.quantity
+}
+
+func (l LineItem) PriceBreakdown() PriceBreakdown {
+	return l.breakdown
 }
