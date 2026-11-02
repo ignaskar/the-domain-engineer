@@ -5,8 +5,9 @@
 package dbmodels
 
 import (
+	"time"
+
 	"eats/backend/billing/domain"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type BillingDocument struct {
@@ -19,6 +20,6 @@ type BillingDocument struct {
 type BillingDocumentSeries struct {
 	Prefix     string
 	LastNumber int32
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }

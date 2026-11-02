@@ -18,6 +18,6 @@ type BillingDocument struct {
 type BillingDocumentSeries struct {
 	Prefix     string
 	LastNumber int32
-	CreatedAt  pgtype.Timestamp
-	UpdatedAt  pgtype.Timestamp
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
 }

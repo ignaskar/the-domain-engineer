@@ -6,6 +6,7 @@ package db_test
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"sync"
@@ -73,6 +74,50 @@ func TestCreateDocument_ConcurrentDocumentNumbers(t *testing.T) {
 
 		assert.Equal(t, i+1, int(number))
 	}
+}
+
+func TestCreateDocument_FailedCreateDoesNotConsumeNumber(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := testutils.NewDB(t)
+
+	repo := db.NewPostgresRepository(database)
+
+	seriesStr := common.NewUUIDv7().String()
+	series, err := domain.NewDocumentSeries(seriesStr)
+	require.NoError(t, err)
+
+	q := dbtests.New(database)
+	err = q.SaveDocumentSeries(ctx, seriesStr)
+	require.NoError(t, err)
+
+	createDocument := func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
+		return db.DocumentRecord{
+			UUID: domain.DocumentUUID{UUID: common.NewUUIDv7()},
+		}, nil
+	}
+
+	_, err = repo.CreateDocument(ctx, series, createDocument)
+	require.NoError(t, err)
+
+	_, err = repo.CreateDocument(
+		ctx,
+		series,
+		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
+			return db.DocumentRecord{}, errors.New("document rejected")
+		},
+	)
+	require.Error(t, err)
+
+	_, err = repo.CreateDocument(ctx, series, createDocument)
+	require.NoError(t, err)
+
+	docs, err := q.GetDocumentsBySeriesPrefix(ctx, seriesStr)
+	require.NoError(t, err)
+
+	// Without a transaction, the rejected document burns number 2 and leaves a gap.
+	assert.Equal(t, []string{seriesStr + "-00000001", seriesStr + "-00000002"}, docs)
 }
 
 func TestCreateDocument_ExternalReference(t *testing.T) {

@@ -122,13 +122,27 @@ func TestAddress_Scan(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	var addr Address
-	err = addr.Scan(string(input))
+	// pgx hands JSONB columns to Scan as []byte, so the string case alone
+	// doesn't cover reading an address back from the database.
+	testCases := []struct {
+		name string
+		src  any
+	}{
+		{name: "string", src: string(input)},
+		{name: "bytes", src: input},
+	}
 
-	require.NoError(t, err)
-	require.Equal(t, "123 Main St", addr.Line1())
-	require.Equal(t, "Apt 4", addr.Line2())
-	require.Equal(t, "12345", addr.PostalCode())
-	require.Equal(t, "New York", addr.City())
-	require.Equal(t, "US", addr.CountryCode().Code())
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var addr Address
+			err := addr.Scan(tc.src)
+
+			require.NoError(t, err)
+			require.Equal(t, "123 Main St", addr.Line1())
+			require.Equal(t, "Apt 4", addr.Line2())
+			require.Equal(t, "12345", addr.PostalCode())
+			require.Equal(t, "New York", addr.City())
+			require.Equal(t, "US", addr.CountryCode().Code())
+		})
+	}
 }
