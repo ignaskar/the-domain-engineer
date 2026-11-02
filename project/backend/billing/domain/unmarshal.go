@@ -1,14 +1,41 @@
 package domain
 
 import (
+	"eats/backend/common/shared"
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/shopspring/decimal"
 )
 
 var nonDigits = regexp.MustCompile(`\D+`)
+
+func UnmarshalDocument(
+	uuid DocumentUUID,
+	externalReference *string,
+	documentNumber DocumentNumber,
+	documentType DocumentType,
+	issueDate time.Time,
+	currency shared.Currency,
+	seller, buyer LegalEntity,
+	lineItems []LineItem,
+	summary PriceBreakdownSummary,
+) *Document {
+	return &Document{
+		uuid:              uuid,
+		externalReference: externalReference,
+		documentType:      documentType,
+		issueDate:         issueDate,
+		currency:          currency,
+		documentNumber:    documentNumber,
+		seller:            seller,
+		buyer:             buyer,
+		lineItems:         lineItems,
+		summary:           summary,
+	}
+}
 
 func UnmarshalDocumentNumber(series DocumentSeries, docNumber string) (DocumentNumber, error) {
 	trimmed := strings.TrimPrefix(docNumber, series.String())
