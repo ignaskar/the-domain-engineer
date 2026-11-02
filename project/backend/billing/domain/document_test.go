@@ -40,6 +40,18 @@ func TestNewReceipt_ValidReceipt(t *testing.T) {
 		assert.True(t, got.PriceBreakdown().UnitNetAmount().Equal(want.UnitAmount.Amount()),
 			"line item %d unit net should equal input net amount", i)
 	}
+
+	// Summary aggregates the line items.
+	// 2x Cheeseburger @ $10.00 net + 1x Fries @ $3.50 net, 10% tax.
+	summary := doc.Summary()
+
+	assertDecimalsEqual(t, decimal.NewFromFloat(23.50), summary.NetAmount(), "summary NetAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(2.35), summary.TaxAmount(), "summary TaxAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(25.85), summary.GrossAmount(), "summary GrossAmount")
+
+	require.Len(t, summary.Taxes(), 1, "all items share the same tax rate")
+	assertDecimalsEqual(t, decimal.NewFromFloat(23.50), summary.Taxes()[0].NetAmount(), "tax entry NetAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(2.35), summary.Taxes()[0].TaxAmount(), "tax entry TaxAmount")
 }
 
 func TestNewReceipt_ValidationErrors(t *testing.T) {
@@ -147,6 +159,32 @@ func TestNewReceipt_ValidationErrors(t *testing.T) {
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})
 	}
+}
+
+func TestNewReceipt_SummarizesMultipleItems(t *testing.T) {
+	data := validReceiptData(t)
+	data.LineItems = []domain.NewLineItemData{
+		{Name: "Item A", Quantity: 2, UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(10.00))},
+		{Name: "Item B", Quantity: 1, UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(5.00))},
+		{Name: "Item C", Quantity: 1, UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(15.00))},
+		{Name: "Item D", Quantity: 3, UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(5.00))},
+		{Name: "Item E", Quantity: 2, UnitAmount: shared.NewNetAmount(decimal.NewFromFloat(10.00))},
+	}
+
+	doc, err := domain.NewReceipt(data, newTestDocumentNumber(t))
+	require.NoError(t, err)
+
+	// All items share the default 10% tax rate.
+	// Total: 20 + 5 + 15 + 15 + 20 = 75.00 net, 7.50 tax, 82.50 gross.
+	summary := doc.Summary()
+
+	assertDecimalsEqual(t, decimal.NewFromFloat(75.00), summary.NetAmount(), "total NetAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(7.50), summary.TaxAmount(), "total TaxAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(82.50), summary.GrossAmount(), "total GrossAmount")
+
+	require.Len(t, summary.Taxes(), 1, "all items share one tax rate")
+	assertDecimalsEqual(t, decimal.NewFromFloat(75.00), summary.Taxes()[0].NetAmount(), "tax group NetAmount")
+	assertDecimalsEqual(t, decimal.NewFromFloat(7.50), summary.Taxes()[0].TaxAmount(), "tax group TaxAmount")
 }
 
 func validReceiptData(t *testing.T) domain.NewDocumentData {
