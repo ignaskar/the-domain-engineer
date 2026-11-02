@@ -14,6 +14,39 @@ type Handler struct {
 	queries  *query.Handlers
 }
 
+func (h Handler) CreateReceipt(ctx context.Context, request CreateReceiptRequestObject) (CreateReceiptResponseObject, error) {
+	dd, err := newDocumentDetailsFromCreateDocument(*request.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := command.IssueReceipt{
+		DocumentData: dd,
+	}
+
+	docUUID, err := h.commands.IssueReceipt(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	return CreateReceipt201JSONResponse{
+		DocumentUuid: docUUID,
+	}, nil
+}
+
+func (h Handler) GetDocument(ctx context.Context, request GetDocumentRequestObject) (GetDocumentResponseObject, error) {
+	query := query.GetDocumentByUUID{
+		DocumentUUID: request.DocumentUuid,
+	}
+
+	doc, err := h.queries.GetDocumentByUUID(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+
+	return GetDocument200JSONResponse(documentToResponse(doc)), nil
+}
+
 func documentToResponse(doc *domain.Document) DocumentResponse {
 	lineItems := make([]ResponseLineItem, 0, len(doc.LineItems()))
 	for _, li := range doc.LineItems() {
