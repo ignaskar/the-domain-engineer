@@ -58,18 +58,9 @@ func (r *PostgresRepository) CreateDocument(
 			externalReference = *doc.ExternalReference()
 		}
 
-		buyerUUID := common.NewUUIDv7()
-		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
-			SnapshotUuid: buyerUUID,
-			Name:         doc.Buyer().Name(),
-			Address:      doc.Buyer().Address(),
-			TaxID:        doc.Buyer().TaxID(),
-		})
-		if err != nil {
-			return fmt.Errorf("error saving buyer entity snapshot: %w", err)
-		}
-
 		sellerUUID := common.NewUUIDv7()
+		buyerUUID := common.NewUUIDv7()
+
 		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
 			SnapshotUuid: sellerUUID,
 			Name:         doc.Seller().Name(),
@@ -77,7 +68,17 @@ func (r *PostgresRepository) CreateDocument(
 			TaxID:        doc.Seller().TaxID(),
 		})
 		if err != nil {
-			return fmt.Errorf("error saving seller entity snapshot: %w", err)
+			return fmt.Errorf("error saving seller legal entity: %w", err)
+		}
+
+		err = queries.SaveLegalEntitySnapshot(ctx, dbmodels.SaveLegalEntitySnapshotParams{
+			SnapshotUuid: buyerUUID,
+			Name:         doc.Buyer().Name(),
+			Address:      doc.Buyer().Address(),
+			TaxID:        doc.Buyer().TaxID(),
+		})
+		if err != nil {
+			return fmt.Errorf("error saving buyer legal entity: %w", err)
 		}
 
 		err = queries.SaveDocument(ctx, dbmodels.SaveDocumentParams{
@@ -118,16 +119,16 @@ func (r *PostgresRepository) CreateDocument(
 			}
 		}
 
-		for _, ts := range doc.Summary().Taxes() {
-			err = queries.SaveDocumentTax(ctx, dbmodels.SaveDocumentTaxParams{
+		for _, tax := range doc.Summary().Taxes() {
+			err := queries.SaveDocumentTax(ctx, dbmodels.SaveDocumentTaxParams{
 				DocumentUuid: doc.UUID(),
-				TaxRate:      ts.TaxRate().Rate(),
-				TaxType:      ts.TaxRate().TaxType(),
-				NetAmount:    ts.NetAmount(),
-				TaxAmount:    ts.TaxAmount(),
+				TaxType:      tax.TaxRate().TaxType(),
+				TaxRate:      tax.TaxRate().Rate(),
+				NetAmount:    tax.NetAmount(),
+				TaxAmount:    tax.TaxAmount(),
 			})
 			if err != nil {
-				return fmt.Errorf("error saving document taxes: %w", err)
+				return fmt.Errorf("error saving document tax: %w", err)
 			}
 		}
 
@@ -199,17 +200,19 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		))
 	}
 
-	taxes, err := queries.GetDocumentTaxes(ctx, docUUID)
+	var taxes []domain.TaxSummary
+
+	dbTaxes, err := queries.GetDocumentTaxes(ctx, docUUID)
 	if err != nil {
 		return nil, fmt.Errorf("error getting document taxes: %w", err)
 	}
 
-	var taxSummaries []domain.TaxSummary
-	for _, t := range taxes {
-		taxSummaries = append(taxSummaries, domain.UnmarshalTaxSummary(
-			domain.UnmarshalTaxRate(t.TaxRate, t.TaxType),
-			t.NetAmount,
-			t.TaxAmount,
+	for _, dbTax := range dbTaxes {
+		taxRate := domain.UnmarshalTaxRate(dbTax.TaxRate, dbTax.TaxType)
+		taxes = append(taxes, domain.UnmarshalTaxSummary(
+			taxRate,
+			dbTax.NetAmount,
+			dbTax.TaxAmount,
 		))
 	}
 
@@ -217,7 +220,7 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		dbDoc.BillingDocument.TotalNetAmount,
 		dbDoc.BillingDocument.TotalTaxAmount,
 		dbDoc.BillingDocument.TotalGrossAmount,
-		taxSummaries,
+		taxes,
 	)
 
 	docSeries, err := domain.NewDocumentSeries(dbDoc.BillingDocument.SeriesPrefix)
@@ -233,7 +236,7 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		dbDoc.BillingLegalEntitySnapshot.TaxID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error building seller legal entity: %w", err)
+		return nil, fmt.Errorf("error creating seller legal entity: %w", err)
 	}
 
 	buyer, err := domain.NewLegalEntity(
@@ -242,7 +245,7 @@ func (r *PostgresRepository) DocumentByUUID(ctx context.Context, docUUID domain.
 		dbDoc.BillingLegalEntitySnapshot_2.TaxID,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("error building buyer legal entity: %w", err)
+		return nil, fmt.Errorf("error creating buyer legal entity: %w", err)
 	}
 
 	doc := domain.UnmarshalDocument(

@@ -20,7 +20,7 @@ SELECT documents.document_uuid, documents.document_number, documents.series_pref
 FROM billing.documents AS documents
 INNER JOIN billing.legal_entity_snapshots seller ON seller.snapshot_uuid = documents.seller_uuid
 INNER JOIN billing.legal_entity_snapshots buyer ON buyer.snapshot_uuid = documents.buyer_uuid
-WHERE document_uuid = $1 LIMIT 1
+WHERE documents.document_uuid = $1 LIMIT 1
 `
 
 type GetDocumentRow struct {
@@ -120,7 +120,8 @@ func (q *Queries) GetDocumentLineItems(ctx context.Context, documentUuid domain.
 }
 
 const getDocumentTaxes = `-- name: GetDocumentTaxes :many
-SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount FROM billing.document_taxes WHERE document_uuid = $1
+SELECT document_uuid, tax_rate, tax_type, net_amount, tax_amount from billing.document_taxes
+WHERE document_uuid = $1
 `
 
 func (q *Queries) GetDocumentTaxes(ctx context.Context, documentUuid domain.DocumentUUID) ([]BillingDocumentTax, error) {
@@ -171,7 +172,8 @@ INSERT INTO billing.documents (
 VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
-    $8, $9, $10, $11, $12
+    $8, $9, $10,
+    $11, $12
 )
 `
 
@@ -264,25 +266,20 @@ func (q *Queries) SaveDocumentLineItem(ctx context.Context, arg SaveDocumentLine
 }
 
 const saveDocumentTax = `-- name: SaveDocumentTax :exec
-INSERT INTO billing.document_taxes (
-    document_uuid,
-    tax_rate,
-    tax_type,
-    net_amount,
-    tax_amount
+INSERT INTO billing.document_taxes (document_uuid, tax_type, tax_rate, net_amount, tax_amount
 ) VALUES (
     $1,
     $2,
     $3,
     $4,
     $5
-)
+ )
 `
 
 type SaveDocumentTaxParams struct {
 	DocumentUuid domain.DocumentUUID
-	TaxRate      decimal.Decimal
 	TaxType      domain.TaxType
+	TaxRate      decimal.Decimal
 	NetAmount    decimal.Decimal
 	TaxAmount    decimal.Decimal
 }
@@ -290,8 +287,8 @@ type SaveDocumentTaxParams struct {
 func (q *Queries) SaveDocumentTax(ctx context.Context, arg SaveDocumentTaxParams) error {
 	_, err := q.db.Exec(ctx, saveDocumentTax,
 		arg.DocumentUuid,
-		arg.TaxRate,
 		arg.TaxType,
+		arg.TaxRate,
 		arg.NetAmount,
 		arg.TaxAmount,
 	)
