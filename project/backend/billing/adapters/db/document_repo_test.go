@@ -11,8 +11,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/brianvoe/gofakeit/v7"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,6 +23,7 @@ import (
 	"eats/backend/billing/adapters/db/dbtests"
 	"eats/backend/billing/domain"
 	"eats/backend/common"
+	"eats/backend/common/shared"
 	"eats/backend/common/testutils"
 )
 
@@ -39,21 +43,29 @@ func TestCreateDocument_ConcurrentDocumentNumbers(t *testing.T) {
 	err = q.SaveDocumentSeries(ctx, seriesStr)
 	require.NoError(t, err)
 
+	documentData := domain.NewDocumentData{
+		IssueDate: time.Now(),
+		Currency:  shared.MustNewCurrency("USD"),
+		Seller:    newSeller(t),
+		Buyer:     newBuyer(t),
+		LineItems: []domain.NewLineItemData{
+			{
+				Name:       "Test Item",
+				Quantity:   1,
+				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+			},
+		},
+	}
+
 	wg := sync.WaitGroup{}
 
 	concurrentDocuments := 100
 
 	for i := 0; i < concurrentDocuments; i++ {
 		wg.Go(func() {
-			_, err := repo.CreateDocument(
-				ctx,
-				series,
-				func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
-					return db.DocumentRecord{
-						UUID: domain.DocumentUUID{UUID: common.NewUUIDv7()},
-					}, nil
-				},
-			)
+			_, err := repo.CreateDocument(ctx, series, func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+				return domain.NewReceipt(documentData, documentNumber)
+			})
 			assert.NoError(t, err)
 		})
 	}
@@ -92,22 +104,30 @@ func TestCreateDocument_FailedCreateDoesNotConsumeNumber(t *testing.T) {
 	err = q.SaveDocumentSeries(ctx, seriesStr)
 	require.NoError(t, err)
 
-	createDocument := func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
-		return db.DocumentRecord{
-			UUID: domain.DocumentUUID{UUID: common.NewUUIDv7()},
-		}, nil
+	documentData := domain.NewDocumentData{
+		IssueDate: time.Now(),
+		Currency:  shared.MustNewCurrency("USD"),
+		Seller:    newSeller(t),
+		Buyer:     newBuyer(t),
+		LineItems: []domain.NewLineItemData{
+			{
+				Name:       "Test Item",
+				Quantity:   1,
+				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+			},
+		},
+	}
+
+	createDocument := func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+		return domain.NewReceipt(documentData, documentNumber)
 	}
 
 	_, err = repo.CreateDocument(ctx, series, createDocument)
 	require.NoError(t, err)
 
-	_, err = repo.CreateDocument(
-		ctx,
-		series,
-		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
-			return db.DocumentRecord{}, errors.New("document rejected")
-		},
-	)
+	_, err = repo.CreateDocument(ctx, series, func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+		return nil, errors.New("document rejected")
+	})
 	require.Error(t, err)
 
 	_, err = repo.CreateDocument(ctx, series, createDocument)
@@ -138,39 +158,38 @@ func TestCreateDocument_ExternalReference(t *testing.T) {
 
 	externalRef := uuid.NewString()
 
-	// First create should succeed.
-	docUUID, err := repo.CreateDocument(
-		ctx,
-		series,
-		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
-			return db.DocumentRecord{
-				UUID:              domain.DocumentUUID{UUID: common.NewUUIDv7()},
-				ExternalReference: &externalRef,
-			}, nil
+	documentData := domain.NewDocumentData{
+		ExternalReference: &externalRef,
+		IssueDate:         time.Now(),
+		Currency:          shared.MustNewCurrency("USD"),
+		Seller:            newSeller(t),
+		Buyer:             newBuyer(t),
+		LineItems: []domain.NewLineItemData{
+			{
+				Name:       "Test Item",
+				Quantity:   1,
+				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("10.00")),
+			},
 		},
-	)
-	require.NoError(t, err)
-	require.False(t, docUUID.IsZero())
+	}
 
-	// Saving the document with the same external reference should be idempotent.
-	doc2UUID, err := repo.CreateDocument(
-		ctx,
-		series,
-		func(docNumber domain.DocumentNumber) (db.DocumentRecord, error) {
-			return db.DocumentRecord{
-				UUID:              domain.DocumentUUID{UUID: common.NewUUIDv7()},
-				ExternalReference: &externalRef,
-			}, nil
-		},
-	)
+	docUUID, err := repo.CreateDocument(ctx, series, func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+		return domain.NewReceipt(documentData, documentNumber)
+	})
+	require.NoError(t, err)
+
+	doc, err := repo.DocumentByUUID(ctx, docUUID)
+	require.NoError(t, err)
+	assert.NotNil(t, doc.ExternalReference())
+	assert.Equal(t, externalRef, *doc.ExternalReference())
+
+	// Saving the document with the same external reference should be idempotent
+	doc2UUID, err := repo.CreateDocument(ctx, series, func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+		return domain.NewReceipt(documentData, documentNumber)
+	})
 	require.NoError(t, err)
 
 	assert.Equal(t, docUUID, doc2UUID, "expected the same document UUID to be returned for idempotent create")
-
-	// Verify only one document was created.
-	docs, err := q.GetDocumentsBySeriesPrefix(ctx, seriesStr)
-	require.NoError(t, err)
-	assert.Len(t, docs, 1)
 
 	// The duplicate call must not use up a document number.
 	var lastNumber int
@@ -181,4 +200,95 @@ func TestCreateDocument_ExternalReference(t *testing.T) {
 	).Scan(&lastNumber)
 	require.NoError(t, err)
 	assert.Equal(t, 1, lastNumber, "the duplicate call used up a document number: the series has a gap now")
+}
+
+func TestCreateDocument_WithLineItemsAndTaxes(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	database := testutils.NewDB(t)
+
+	repo := db.NewPostgresRepository(database)
+
+	seriesStr := common.NewUUIDv7().String()
+	series, err := domain.NewDocumentSeries(seriesStr)
+	require.NoError(t, err)
+
+	q := dbtests.New(database)
+	err = q.SaveDocumentSeries(ctx, seriesStr)
+	require.NoError(t, err)
+
+	documentData := domain.NewDocumentData{
+		IssueDate: time.Now(),
+		Currency:  shared.MustNewCurrency("USD"),
+		Seller:    newSeller(t),
+		Buyer:     newBuyer(t),
+		LineItems: []domain.NewLineItemData{
+			{
+				Name:       "Pizza Margherita",
+				Quantity:   2,
+				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("12.30")),
+			},
+			{
+				Name:       "Delivery Fee",
+				Quantity:   1,
+				UnitAmount: shared.NewGrossAmount(decimal.RequireFromString("5.00")),
+			},
+		},
+	}
+
+	docUUID, err := repo.CreateDocument(ctx, series, func(documentNumber domain.DocumentNumber) (*domain.Document, error) {
+		return domain.NewReceipt(documentData, documentNumber)
+	})
+	require.NoError(t, err)
+
+	doc, err := repo.DocumentByUUID(ctx, docUUID)
+	require.NoError(t, err)
+
+	assert.Equal(t, domain.DocumentTypeReceipt, doc.DocumentType())
+	assert.Len(t, doc.LineItems(), 2)
+
+	assert.Equal(t, "Pizza Margherita", doc.LineItems()[0].Name())
+	assert.Equal(t, 2, doc.LineItems()[0].Quantity())
+
+	assert.Equal(t, "Delivery Fee", doc.LineItems()[1].Name())
+	assert.Equal(t, 1, doc.LineItems()[1].Quantity())
+
+	assert.True(t, doc.Summary().GrossAmount().GreaterThan(decimal.Zero))
+	assert.True(t, doc.Summary().NetAmount().GreaterThan(decimal.Zero))
+}
+
+func newSeller(t *testing.T) domain.LegalEntity {
+	addr := gofakeit.Address()
+
+	address, err := shared.NewAddress(addr.Street, "", addr.Zip, addr.City, shared.MustNewCountryCode("US"))
+	require.NoError(t, err)
+
+	taxID, err := shared.NewTaxID(gofakeit.Numerify("##########"))
+	require.NoError(t, err)
+
+	entity, err := domain.NewLegalEntity(
+		gofakeit.Company(),
+		address,
+		&taxID,
+	)
+	require.NoError(t, err)
+
+	return entity
+}
+
+func newBuyer(t *testing.T) domain.LegalEntity {
+	addr := gofakeit.Address()
+
+	address, err := shared.NewAddress(addr.Street, "", addr.Zip, addr.City, shared.MustNewCountryCode("US"))
+	require.NoError(t, err)
+
+	entity, err := domain.NewLegalEntity(
+		gofakeit.Company(),
+		address,
+		nil,
+	)
+	require.NoError(t, err)
+
+	return entity
 }
